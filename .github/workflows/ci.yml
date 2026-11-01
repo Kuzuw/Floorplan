@@ -14,12 +14,13 @@ concurrency:
 jobs:
   core:
     # Fast feedback: the JUCE-free DSP/sequencer core, its tests and the benchmark.
+    # Linux is not supported for now, so CI does not build or test it.
     name: Core (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-latest, macos-latest]
+        os: [windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v5
 
@@ -64,22 +65,10 @@ jobs:
           - name: macOS
             os: macos-latest
             configure: -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
-          - name: Linux
-            os: ubuntu-24.04
-            configure: -G Ninja
     steps:
       - uses: actions/checkout@v5
         with:
           submodules: recursive
-
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ninja-build xvfb \
-            libasound2-dev libjack-jackd2-dev libfreetype-dev libfontconfig1-dev \
-            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev \
-            libxrandr-dev libxrender-dev libgl1-mesa-dev
 
       - name: Configure
         shell: bash
@@ -105,11 +94,10 @@ jobs:
           echo "::error title=Build log tail::$(tail -n 40 build.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
 
       - name: Test
-        # Linux has no display: the editor tests run on a virtual one.
         shell: bash
         run: |
           set -o pipefail
-          ${{ runner.os == 'Linux' && 'xvfb-run -a' || '' }} ctest --test-dir build -C Release --output-on-failure 2>&1 | tee test.log
+          ctest --test-dir build -C Release --output-on-failure 2>&1 | tee test.log
 
       - name: Report failing tests
         if: failure()

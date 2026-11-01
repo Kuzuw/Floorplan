@@ -13,7 +13,7 @@
   <img alt="C++17" src="https://img.shields.io/badge/C%2B%2B-17-00599C.svg">
   <img alt="JUCE 8" src="https://img.shields.io/badge/JUCE-8.0.16-8DC63F.svg">
   <img alt="Formats" src="https://img.shields.io/badge/formats-VST3%20%7C%20Standalone-ff9f1c.svg">
-  <img alt="Platforms" src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg">
+  <img alt="Platforms" src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS-lightgrey.svg">
 </p>
 
 <p align="center">
@@ -93,13 +93,14 @@ Numbers vary by a few percent between runs. The engine's static state is about 2
 
 ### Requirements
 
-| | Windows | macOS | Linux |
-| --- | --- | --- | --- |
-| Compiler | Visual Studio 2022/2026 (MSVC) | Xcode 14+ (Apple Clang) | GCC 11+ or Clang 14+ |
-| Build tools | CMake ≥ 3.22 (the copy bundled with Visual Studio works) | CMake ≥ 3.22 | CMake ≥ 3.22, Ninja or Make |
-| Libraries | none | none | see below |
+| | Windows | macOS |
+| --- | --- | --- |
+| Compiler | Visual Studio 2022/2026 (MSVC) | Xcode 14+ (Apple Clang) |
+| Build tools | CMake ≥ 3.22 (the copy bundled with Visual Studio works) | CMake ≥ 3.22 |
 
-JUCE 8 is included as a git submodule, so there is nothing else to install. On Debian/Ubuntu, JUCE needs:
+JUCE 8 is included as a git submodule, so there is nothing else to install.
+
+Linux is not supported for now. Version 0.1.0 built there, but CI no longer builds or tests Linux, so later versions may not work. If you want to try anyway, JUCE needs these packages on Debian/Ubuntu:
 
 ```bash
 sudo apt install libasound2-dev libjack-jackd2-dev libfreetype-dev libfontconfig1-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libgl1-mesa-dev
@@ -158,13 +159,12 @@ Nothing is code-signed yet, so you will see a warning:
 
 ### Manual installation
 
-To install from a zip or a build of your own (or on Linux), copy `Floorplan.vst3` to your VST3 folder:
+To install from a zip or a build of your own, copy `Floorplan.vst3` to your VST3 folder:
 
 | OS | Folder |
 | --- | --- |
 | Windows | `C:\Program Files\Common Files\VST3\` |
 | macOS | `/Library/Audio/Plug-Ins/VST3/` or `~/Library/Audio/Plug-Ins/VST3/` |
-| Linux | `~/.vst3/` |
 
 The Standalone app runs from anywhere. Pick your audio/MIDI device under *Options → Audio/MIDI Settings*.
 

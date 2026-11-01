@@ -42,9 +42,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - New parameters are added after all existing ones, so existing parameter indices do not change.
 - Millisecond times in the voices now convert to whole samples by rounding instead of cutting off the fraction. This covers the kick's attack and hold, the clap's spread and the snare's wire delay. The result is the same on every compiler, and at most one sample away from 0.1.0.
 
-### Fixed
-
-- CI: the core tests failed on Linux (GCC). Failing test output now appears as annotations, which anyone can read without signing in.
+- Linux is not supported for now: CI no longer builds or tests it, and the README lists Windows and macOS only.
+- CI: failing test output now appears as annotations, which anyone can read without signing in.
 
 ## [0.1.0] - 2026-11-01
 
