@@ -13,7 +13,7 @@ First public release.
 ### Added
 
 - VST3 and Standalone builds for Windows, macOS and Linux (JUCE 8, CMake).
-- Installers: a Windows setup (x64) and a macOS package (Apple silicon and Intel), each with a choice of VST3 plugin and Standalone app. Neither is code-signed yet.
+- Installers: a Windows setup (x64) and a macOS package (Apple silicon and Intel), each with a choice of VST3 plugin and Standalone app, plus a plain VST3 zip per platform. Nothing is code-signed yet.
 - Eight synthesized voices: Kick, Snare, Closed Hat, Open Hat (choked by the closed hat), Clap, Percussion, Low Tom and Cymbal, each with six sound controls.
 - Optional WAV/AIFF/FLAC/Ogg sample playback per voice, loaded off the audio thread. Missing samples are reported and fall back to synthesis.
 - Per-voice channel strip: level, pan, mute, solo, bipolar filter, drive and output routing to eight extra stereo buses.

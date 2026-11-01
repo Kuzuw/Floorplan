@@ -148,14 +148,17 @@ Download the installer for your system from the [Releases](https://github.com/Ku
 
 Both installers let you choose the VST3 plugin, the Standalone app, or both. On Windows, uninstall from *Settings → Apps*.
 
-The installers are not code-signed yet, so the first launch shows a warning:
+If you only want the plugin, each release also has a `…-VST3.zip` per platform: unzip it and copy `Floorplan.vst3` to your VST3 folder (see [Manual installation](#manual-installation)).
+
+Nothing is code-signed yet, so you will see a warning:
 
 - **Windows:** SmartScreen says "Windows protected your PC". Click **More info**, then **Run anyway**.
-- **macOS:** the package is blocked as coming from an unidentified developer. Open **System Settings → Privacy & Security**, click **Open Anyway** next to the Floorplan message, then open the package again.
+- **macOS installer:** the package is blocked as coming from an unidentified developer. Open **System Settings → Privacy & Security**, click **Open Anyway** next to the Floorplan message, then open the package again.
+- **macOS zip:** before copying, remove the download quarantine in Terminal with `xattr -dr com.apple.quarantine Floorplan.vst3`. Otherwise your DAW may refuse to load the plugin.
 
 ### Manual installation
 
-To install a build of your own (or on Linux), copy `Floorplan.vst3` to your VST3 folder:
+To install from a zip or a build of your own (or on Linux), copy `Floorplan.vst3` to your VST3 folder:
 
 | OS | Folder |
 | --- | --- |

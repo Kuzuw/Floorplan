@@ -15,6 +15,11 @@ on:
 permissions:
   contents: read
 
+# A newer push replaces a dry run; tag builds always run to completion.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
 jobs:
   version:
     name: Version
@@ -60,6 +65,9 @@ jobs:
             "/DBuildDir=$pwd\build\Floorplan_artefacts\Release" "/DOutputDir=$pwd\dist" packaging\windows\Floorplan.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Zip the VST3 for manual installation
+        run: Compress-Archive -Path build\Floorplan_artefacts\Release\VST3\Floorplan.vst3 -DestinationPath "dist\Floorplan-$env:VERSION-Windows-x64-VST3.zip"
+
       - name: Check installer (install, verify, uninstall)
         run: |
           $setup = "dist\Floorplan-$env:VERSION-Windows-x64-Setup.exe"
@@ -80,7 +88,7 @@ jobs:
       - uses: actions/upload-artifact@v5
         with:
           name: installer-windows
-          path: dist/*.exe
+          path: dist/*
           if-no-files-found: error
 
   macos:
@@ -95,15 +103,31 @@ jobs:
           submodules: recursive
 
       - name: Build
+        timeout-minutes: 30
         run: |
+          set -o pipefail
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
-          cmake --build build --config Release --parallel
+          cmake --build build --config Release --parallel 3 2>&1 | tee build.log
+
+      - name: Report the end of the build log
+        # One annotation (readable without signing in) with the last lines,
+        # so a stalled or failed build can be diagnosed.
+        if: failure()
+        run: |
+          echo "::error title=Build log tail::$(tail -n 40 build.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
 
       - name: Test
+        timeout-minutes: 10
         run: ctest --test-dir build -C Release --output-on-failure
 
       - name: Build installer
         run: bash packaging/macos/build-pkg.sh "$VERSION" build/Floorplan_artefacts/Release dist
+
+      - name: Zip the VST3 for manual installation
+        run: |
+          vst3=build/Floorplan_artefacts/Release/VST3/Floorplan.vst3
+          codesign --force --deep --sign - "$vst3"
+          ditto -c -k --keepParent "$vst3" "dist/Floorplan-$VERSION-macOS-VST3.zip"
 
       - name: Check installer (install and verify)
         run: |
@@ -124,7 +148,7 @@ jobs:
       - uses: actions/upload-artifact@v5
         with:
           name: installer-macos
-          path: dist/*.pkg
+          path: dist/*
           if-no-files-found: error
 
   release:
@@ -152,17 +176,18 @@ jobs:
           {
             echo "## Download"
             echo
-            echo "| Platform | File |"
-            echo "| --- | --- |"
-            echo "| Windows 10/11 (64-bit) | \`Floorplan-$VERSION-Windows-x64-Setup.exe\` |"
-            echo "| macOS 11+ (Apple silicon and Intel) | \`Floorplan-$VERSION-macOS.pkg\` |"
+            echo "| Platform | Installer (VST3 + Standalone app) | VST3 only, unzip and copy |"
+            echo "| --- | --- | --- |"
+            echo "| Windows 10/11 (64-bit) | \`Floorplan-$VERSION-Windows-x64-Setup.exe\` | \`Floorplan-$VERSION-Windows-x64-VST3.zip\` |"
+            echo "| macOS 11+ (Apple silicon and Intel) | \`Floorplan-$VERSION-macOS.pkg\` | \`Floorplan-$VERSION-macOS-VST3.zip\` |"
             echo
-            echo "The installers are not code-signed yet, so the first launch shows a warning:"
+            echo "The installers place the plugin in the system VST3 folder. With a zip, copy \`Floorplan.vst3\` to \`C:\\Program Files\\Common Files\\VST3\\\` (Windows) or \`/Library/Audio/Plug-Ins/VST3/\` (macOS), then rescan plugins in your DAW."
+            echo
+            echo "Nothing is code-signed yet, so you will see a warning:"
             echo
             echo "- **Windows:** SmartScreen says \"Windows protected your PC\". Click **More info**, then **Run anyway**."
-            echo "- **macOS:** the package is blocked as coming from an unidentified developer. Open **System Settings → Privacy & Security**, click **Open Anyway** next to the Floorplan message, then open the package again."
-            echo
-            echo "Linux users: build from source (see the README)."
+            echo "- **macOS installer:** the package is blocked as coming from an unidentified developer. Open **System Settings → Privacy & Security**, click **Open Anyway** next to the Floorplan message, then open the package again."
+            echo "- **macOS zip:** before copying, remove the download quarantine in Terminal: \`xattr -dr com.apple.quarantine Floorplan.vst3\`. Otherwise your DAW may refuse to load the plugin."
             echo
             awk -v v="$VERSION" '$0 ~ "^## \\[" v "\\]" { found = 1; next } found && /^## \[/ { exit } found' CHANGELOG.md
           } > notes.md
