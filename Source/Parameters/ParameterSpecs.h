@@ -50,8 +50,8 @@ struct VoiceSpec
 namespace KickP  { enum { Tune, Bend, BendTime, Decay, Click, Punch, Attack, Shape, Sub, ClickTone, ClickLength }; }
 namespace SnareP { enum { Tune, Tone, Decay, Snappy, BodyDecay, Width, Drop, DropTime, Ring, WireTone, WireDelay }; }
 namespace ClapP  { enum { Tune, Decay, Spread, Bursts, Tone, Width, Attack, BurstLength, TailLevel, Jitter }; }
-namespace MetalP { enum { Tune, Decay, Bright, Metal, Tone, Width }; }
-namespace ToneP  { enum { Tune, Bend, BendTime, Decay, Noise, Metal }; }
+namespace MetalP { enum { Tune, Decay, Bright, Metal, Tone, Width, Attack, Hold, Tail, Detune, HighCut, Stick }; }
+namespace ToneP  { enum { Tune, Bend, BendTime, Decay, Noise, Metal, Attack, Hold, NoiseTone, NoiseLength, MetalTune, Shape }; }
 
 inline constexpr std::array<VoiceSpec, kNumVoices> kVoiceSpecs {{
     { "kick", "Kick", "BD", EngineKind::Kick, 36, -3.0f, 0.0f, {{
@@ -150,6 +150,25 @@ inline constexpr SynthParamSpec kClapExtras[] {
     { "jitter",    "Jitter",    "%",  0.0f,  100.0f, 0.0f,   0.0f   },
 };
 
+// High Cut is a low-pass on the whole voice; at its maximum it is switched off.
+inline constexpr SynthParamSpec kMetalExtras[] {
+    { "attack",  "Attack",   "ms", 0.0f,    500.0f,   0.0f,     40.0f   },
+    { "hold",    "Hold",     "ms", 0.0f,    500.0f,   0.0f,     60.0f   },
+    { "tail",    "Tail",     "%",  0.0f,    100.0f,   0.0f,     0.0f    },
+    { "detune",  "Detune",   "%",  0.0f,    100.0f,   0.0f,     0.0f    },
+    { "highcut", "High Cut", "Hz", 2000.0f, 20000.0f, 20000.0f, 8000.0f },
+    { "stick",   "Stick",    "%",  0.0f,    100.0f,   0.0f,     0.0f    },
+};
+
+inline constexpr SynthParamSpec kToneExtras[] {
+    { "attack",    "Attack",     "ms", 0.0f,   30.0f,    0.0f,    6.0f    },
+    { "hold",      "Hold",       "ms", 0.0f,   200.0f,   0.0f,    40.0f   },
+    { "noisetone", "Noise Tone", "Hz", 200.0f, 12000.0f, 1500.0f, 2000.0f },
+    { "noiselen",  "Noise Len",  "ms", 2.0f,   300.0f,   30.0f,   40.0f   },
+    { "metaltune", "Metal Tune", "st", -24.0f, 24.0f,    0.0f,    0.0f    },
+    { "shape",     "Shape",      "%",  0.0f,   100.0f,   0.0f,    0.0f    },
+};
+
 struct ParamList
 {
     const SynthParamSpec* data;
@@ -163,6 +182,8 @@ constexpr ParamList extraParams (EngineKind engine) noexcept
         case EngineKind::Kick:  return { kKickExtras, (int) std::size (kKickExtras) };
         case EngineKind::Snare: return { kSnareExtras, (int) std::size (kSnareExtras) };
         case EngineKind::Clap:  return { kClapExtras, (int) std::size (kClapExtras) };
+        case EngineKind::Metal: return { kMetalExtras, (int) std::size (kMetalExtras) };
+        case EngineKind::Tone:  return { kToneExtras, (int) std::size (kToneExtras) };
         default:                return { nullptr, 0 };
     }
 }
@@ -170,6 +191,18 @@ constexpr ParamList extraParams (EngineKind engine) noexcept
 static_assert (std::size (kKickExtras) <= (size_t) kMaxExtraParams);
 static_assert (std::size (kSnareExtras) <= (size_t) kMaxExtraParams);
 static_assert (std::size (kClapExtras) <= (size_t) kMaxExtraParams);
+static_assert (std::size (kMetalExtras) <= (size_t) kMaxExtraParams);
+static_assert (std::size (kToneExtras) <= (size_t) kMaxExtraParams);
+
+// The order engines' extras were added in. The plugin appends each group
+// after every parameter that existed before it, so a parameter's index never
+// moves (some hosts store automation by index). Append new groups only.
+constexpr int extrasGeneration (EngineKind engine) noexcept
+{
+    return engine == EngineKind::Metal || engine == EngineKind::Tone ? 1 : 0;
+}
+
+inline constexpr int kNumExtrasGenerations = 2;
 
 // All synthesis parameters of a voice: the main six, then the extras.
 constexpr int numVoiceParams (int voice) noexcept
@@ -192,6 +225,8 @@ enum class ParamPage : uint8_t { Source, PitchEnvelope };
 inline constexpr int kKickEnvelopePage[]  { KickP::Attack, KickP::Punch, KickP::Decay, KickP::Bend, KickP::BendTime };
 inline constexpr int kSnareEnvelopePage[] { SnareP::BodyDecay, SnareP::Decay, SnareP::WireDelay, SnareP::Drop, SnareP::DropTime };
 inline constexpr int kClapEnvelopePage[]  { ClapP::Bursts, ClapP::Spread, ClapP::Jitter, ClapP::Attack, ClapP::BurstLength, ClapP::Decay };
+inline constexpr int kMetalEnvelopePage[] { MetalP::Attack, MetalP::Hold, MetalP::Decay, MetalP::Tail };
+inline constexpr int kToneEnvelopePage[]  { ToneP::Attack, ToneP::Hold, ToneP::Decay, ToneP::NoiseLength, ToneP::Bend, ToneP::BendTime };
 
 struct IndexList
 {
@@ -206,6 +241,8 @@ constexpr IndexList envelopePage (EngineKind engine) noexcept
         case EngineKind::Kick:  return { kKickEnvelopePage, (int) std::size (kKickEnvelopePage) };
         case EngineKind::Snare: return { kSnareEnvelopePage, (int) std::size (kSnareEnvelopePage) };
         case EngineKind::Clap:  return { kClapEnvelopePage, (int) std::size (kClapEnvelopePage) };
+        case EngineKind::Metal: return { kMetalEnvelopePage, (int) std::size (kMetalEnvelopePage) };
+        case EngineKind::Tone:  return { kToneEnvelopePage, (int) std::size (kToneEnvelopePage) };
         default:                return { nullptr, 0 };
     }
 }

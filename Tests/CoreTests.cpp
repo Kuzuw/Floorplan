@@ -8,7 +8,9 @@
 #include "DSP/SineTable.h"
 #include "Instruments/ClapVoice.h"
 #include "Instruments/KickVoice.h"
+#include "Instruments/MetalVoice.h"
 #include "Instruments/SnareVoice.h"
+#include "Instruments/ToneVoice.h"
 #include "Sequencer/Pattern.h"
 #include "Sequencer/Sequencer.h"
 
@@ -510,6 +512,19 @@ double energyIn (const std::vector<float>& x, size_t from, size_t to)
     for (size_t i = from; i < std::min (to, x.size()); ++i) e += (double) x[i] * x[i];
     return e;
 }
+
+// Energy of the first difference relative to the signal's energy, over the
+// first 2400 samples: higher means more top end.
+double highShare (const std::vector<float>& x)
+{
+    double diff = 0.0, all = 0.0;
+    for (size_t i = 1; i < std::min ((size_t) 2400, x.size()); ++i)
+    {
+        diff += (double) (x[i] - x[i - 1]) * (x[i] - x[i - 1]);
+        all += (double) x[i] * x[i];
+    }
+    return diff / all;
+}
 } // namespace
 
 FP_TEST (kick_defaults_match_the_original_kick)
@@ -724,16 +739,6 @@ FP_TEST (snare_wire_delay_and_tone)
     CHECK (energyIn (late, 576, 1920) > 0.7 * energyIn (now, 576, 1920)); // 12-40 ms: they are
 
     // Wire Tone: a low-pass on the wires removes their top end.
-    auto highShare = [] (const std::vector<float>& x)
-    {
-        double diff = 0.0, all = 0.0;
-        for (size_t i = 1; i < 2400; ++i)
-        {
-            diff += (double) (x[i] - x[i - 1]) * (x[i] - x[i - 1]);
-            all += (double) x[i] * x[i];
-        }
-        return diff / all;
-    };
     p[SnareP::WireDelay] = 0.0f;
     const auto open = renderVoiceDirect (Snare, p, sr, 0.1);
     p[SnareP::WireTone] = 2500.0f;
@@ -846,6 +851,286 @@ FP_TEST (envelope_curves_describe_the_voices)
     describeEnvelopes (Clap, p.data(), 0.3f, curves);
     std::vector<float> y (curves.curves[0].y.begin(), curves.curves[0].y.end());
     CHECK (*std::max_element (y.begin(), y.end()) > 0.99f);
+}
+
+// ---------------------------------------------------------------------------
+// Hats, cymbal, percussion and tom: Advanced parameters
+// ---------------------------------------------------------------------------
+namespace
+{
+constexpr std::array<float, 6> kHatPartials    { 205.3f, 304.4f, 369.6f, 522.7f, 540.0f, 800.0f };
+constexpr std::array<float, 6> kCymbalPartials { 263.0f, 400.0f, 421.0f, 474.0f, 587.0f, 845.0f };
+
+// The hats and cymbal as 0.1.1 rendered them.
+Stereo renderOriginalMetal (const float* p, const std::array<float, 6>& partials, double sr, int total)
+{
+    using namespace MetalP;
+    const float inv = (float) (1.0 / sr);
+    std::array<dsp::BlepSquare, 6> oscs {};
+    for (size_t i = 0; i < oscs.size(); ++i)
+    {
+        oscs[i].inc = std::min (0.45f, partials[i] * p[Tune] * inv);
+        oscs[i].phase = 0.13f * (float) i;
+    }
+    const float envCoef = dsp::decayCoef (p[Decay] * 0.001f, sr);
+    const float metalMix = p[Metal] * 0.01f, toneAmt = p[Tone] * 0.01f, width = p[Width] * 0.01f;
+    const float bright = p[Bright] * std::sqrt (p[Tune]);
+    dsp::Svf hpL, hpR, bpL, bpR;
+    hpL.setup (bright, 0.7f, sr);
+    hpR.setup (bright, 0.7f, sr);
+    bpL.setup (bright * 1.2f, 1.0f + toneAmt * 5.0f, sr);
+    bpR.setup (bright * 1.2f, 1.0f + toneAmt * 5.0f, sr);
+    const float bandGain = bpL.k * toneAmt * 1.5f;
+    const float noiseMix = (1.0f - metalMix) * 0.8f;
+    const bool stereo = width > 0.001f;
+    dsp::Noise noiseA { 0x51A7u }, noiseB { 0x7E11u };
+    float env = 1.0f;
+
+    Stereo out { std::vector<float> ((size_t) total), std::vector<float> ((size_t) total) };
+    for (size_t i = 0; i < (size_t) total; ++i)
+    {
+        float metallic = 0.0f;
+        for (auto& o : oscs) metallic += o.next();
+        metallic *= metalMix * (1.0f / 6.0f);
+        const float srcL = metallic + noiseMix * noiseA.next();
+        const auto fL = hpL.process (srcL);
+        const float outL = (fL.high + bpL.bandpass (srcL) * bandGain) * env;
+        float outR = outL;
+        if (stereo)
+        {
+            const float srcR = metallic + noiseMix * noiseB.next();
+            const float mixR = srcR + (1.0f - width) * (srcL - srcR);
+            outR = (hpR.highpass (mixR) + bpR.bandpass (mixR) * bandGain) * env;
+        }
+        env *= envCoef;
+        out.first[i] = outL * 0.8f;
+        out.second[i] = outR * 0.8f;
+    }
+    return out;
+}
+
+// The percussion and tom as 0.1.1 rendered them.
+std::vector<float> renderOriginalTone (const float* p, float modRatio, double sr, int total)
+{
+    using namespace ToneP;
+    const float inv = (float) (1.0 / sr);
+    const float baseFreq = p[Tune], sweepDepth = dsp::semitonesToRatio (p[Bend]) - 1.0f;
+    const float sweepCoef = dsp::timeConstantCoef (p[BendTime] * 0.001f, sr);
+    const float ampCoef = dsp::decayCoef (p[Decay] * 0.001f, sr);
+    const float noiseAmt = p[Noise] * 0.01f, noiseCoef = dsp::decayCoef (0.03f, sr);
+    const float fmIndex = p[Metal] * 0.01f * 0.7f;
+    const bool fm = fmIndex > 0.0001f;
+    dsp::OnePoleHp hp;
+    hp.setup (1500.0f, sr);
+    dsp::Noise noise { 0xD00Du };
+    float sweepEnv = 1.0f, amp = 1.0f, noiseEnv = 1.0f, phC = 0.0f, phM = 0.0f;
+
+    std::vector<float> out ((size_t) total);
+    for (auto& o : out)
+    {
+        const float freq = baseFreq * (1.0f + sweepDepth * sweepEnv);
+        sweepEnv *= sweepCoef;
+        phC += freq * inv;
+        if (phC >= 1.0f) phC -= 1.0f;
+        float mod = 0.0f;
+        if (fm)
+        {
+            phM += freq * modRatio * inv;
+            if (phM >= 1.0f) phM -= 1.0f;
+            mod = dsp::SineTable::sin2pi (phM) * fmIndex * amp;
+        }
+        float v = dsp::SineTable::sin2pi (phC + mod) * amp;
+        amp *= ampCoef;
+        if (noiseEnv > 1.0e-4f)
+        {
+            v += hp.process (noise.next()) * noiseEnv * noiseAmt * 0.6f;
+            noiseEnv *= noiseCoef;
+        }
+        o = v;
+    }
+    return out;
+}
+} // namespace
+
+FP_TEST (metal_and_tone_defaults_match_the_originals)
+{
+    const double sr = 48000.0;
+    for (int variant = 0; variant < 3; ++variant)
+    {
+        for (int voice : { (int) ClosedHat, (int) OpenHat, (int) Cymbal })
+        {
+            auto p = defaultParams (voice);
+            if (variant == 1) { p[MetalP::Metal] = 0.0f; p[MetalP::Tone] = 100.0f; p[MetalP::Width] = 0.0f; p[MetalP::Tune] = 1.7f; }
+            if (variant == 2) { p[MetalP::Metal] = 100.0f; p[MetalP::Tune] = 0.6f; p[MetalP::Bright] = 13000.0f; p[MetalP::Width] = 100.0f; }
+
+            std::vector<float> R;
+            const auto L = renderVoiceDirect (voice, p, sr, 1.0, &R);
+            const auto ref = renderOriginalMetal (p.data(), voice == Cymbal ? kCymbalPartials : kHatPartials, sr, (int) L.size());
+            CHECK (maxDifference (L, ref.first) < kReferenceTolerance);
+            CHECK (maxDifference (R, ref.second) < kReferenceTolerance);
+        }
+
+        for (int voice : { (int) Perc, (int) Tom })
+        {
+            auto p = defaultParams (voice);
+            if (variant == 1) { p[ToneP::Bend] = 24.0f; p[ToneP::BendTime] = 200.0f; p[ToneP::Metal] = 100.0f; p[ToneP::Noise] = 100.0f; }
+            if (variant == 2) { p[ToneP::Tune] = voice == Perc ? 1500.0f : 280.0f; p[ToneP::Decay] = 1400.0f; p[ToneP::Metal] = 60.0f; }
+
+            const auto now = renderVoiceDirect (voice, p, sr, 1.0);
+            const auto ref = renderOriginalTone (p.data(), voice == Perc ? 1.41f : 1.5f, sr, (int) now.size());
+            CHECK (maxDifference (now, ref) < kReferenceTolerance);
+        }
+    }
+}
+
+FP_TEST (metal_attack_hold_and_tail_follow_the_envelope)
+{
+    // The filters run before the envelope, so dividing a hit by the same hit
+    // held at full level gives exactly the envelope the voice applied. It must
+    // be what MetalVoice::ampEnvelope (and so the editor) shows.
+    const double sr = 48000.0;
+    auto flat = defaultParams (ClosedHat);
+    flat[MetalP::Width] = 0.0f;
+    flat[MetalP::Decay] = 200.0f;
+    flat[MetalP::Hold] = 500.0f;
+    auto p = flat;
+    p[MetalP::Attack] = 20.0f;
+    p[MetalP::Hold] = 30.0f;
+    p[MetalP::Tail] = 60.0f;
+
+    const auto held = renderVoiceDirect (ClosedHat, flat, sr, 0.45);
+    const auto out = renderVoiceDirect (ClosedHat, p, sr, 0.45);
+    float worst = 0.0f;
+    int checked = 0;
+    for (size_t i = 0; i < out.size(); ++i)
+        if (std::abs (held[i]) > 0.02f)
+        {
+            const float model = MetalVoice::ampEnvelope (p.data(), (float) ((double) i / sr));
+            worst = std::max (worst, std::abs (out[i] / held[i] - model));
+            ++checked;
+        }
+    CHECK (checked > 1000);
+    CHECK (worst < 0.01f);
+
+    // Tail keeps the hit going after the main decay.
+    auto noTail = p;
+    noTail[MetalP::Tail] = 0.0f;
+    const auto from = (size_t) (0.3 * sr), to = (size_t) (0.45 * sr);
+    CHECK (energyIn (out, from, to) > 10.0 * energyIn (renderVoiceDirect (ClosedHat, noTail, sr, 0.45), from, to));
+}
+
+FP_TEST (metal_detune_high_cut_and_stick)
+{
+    const double sr = 48000.0;
+    auto p = defaultParams (OpenHat);
+    p[MetalP::Width] = 0.0f;
+    const auto base = renderVoiceDirect (OpenHat, p, sr, 0.1);
+
+    auto detuned = p;
+    detuned[MetalP::Detune] = 100.0f;
+    CHECK (maxDifference (renderVoiceDirect (OpenHat, detuned, sr, 0.1), base) > 0.05f);
+
+    auto dark = p;
+    dark[MetalP::HighCut] = 3000.0f;
+    CHECK (highShare (renderVoiceDirect (OpenHat, dark, sr, 0.1)) < 0.5 * highShare (base));
+
+    // Stick: a louder first millisecond, and nothing left of it after 10 ms.
+    auto stick = p;
+    stick[MetalP::Stick] = 100.0f;
+    const auto withStick = renderVoiceDirect (OpenHat, stick, sr, 0.1);
+    CHECK (energyIn (withStick, 0, 48) > 1.5 * energyIn (base, 0, 48));
+    float lateDiff = 0.0f;
+    for (size_t i = 480; i < base.size(); ++i) lateDiff = std::max (lateDiff, std::abs (withStick[i] - base[i]));
+    CHECK (lateDiff < 1.0e-6f);
+}
+
+FP_TEST (tone_envelope_model_matches_rendered_output)
+{
+    // The editor draws ToneVoice::ampEnvelope; it must describe what is heard.
+    const double sr = 48000.0;
+    auto p = defaultParams (Tom);
+    p[ToneP::Noise] = 0.0f;
+    p[ToneP::Bend] = 0.0f;
+    p[ToneP::Tune] = 100.0f; // 10 ms period
+    p[ToneP::Attack] = 10.0f;
+    p[ToneP::Hold] = 30.0f;
+    p[ToneP::Decay] = 1500.0f;
+    const auto out = renderVoiceDirect (Tom, p, sr, 1.2);
+
+    bool bounded = true;
+    for (size_t i = 0; i < out.size(); ++i)
+        bounded = bounded && std::abs (out[i]) <= ToneVoice::ampEnvelope (p.data(), (float) ((double) i / sr)) + 1.0e-3f;
+    CHECK (bounded);
+
+    for (float t : { 0.03f, 0.2f, 0.5f, 1.0f })
+    {
+        const auto centre = (size_t) (t * sr);
+        const float measured = peakIn (out, centre - 240, centre + 240); // one period
+        const float model = ToneVoice::ampEnvelope (p.data(), t);
+        CHECK_NEAR (measured, model, 0.05f * model);
+    }
+
+    CHECK_NEAR (ToneVoice::pitchSemitones (p.data(), 0.0f), 0.0f, 1.0e-4f);
+    p[ToneP::Bend] = 12.0f;
+    CHECK_NEAR (ToneVoice::pitchSemitones (p.data(), 0.0f), 12.0f, 1.0e-3f);
+    CHECK_NEAR (ToneVoice::noiseEnvelope (p.data(), 0.03f), 0.001f, 1.0e-4f); // -60 dB at Noise Len
+}
+
+FP_TEST (tone_noise_tone_and_length)
+{
+    // The noise layer alone: the same hit with and without noise.
+    const double sr = 48000.0;
+    auto noiseOnly = [&] (float tone, float length)
+    {
+        auto p = defaultParams (Perc);
+        p[ToneP::NoiseTone] = tone;
+        p[ToneP::NoiseLength] = length;
+        p[ToneP::Noise] = 0.0f;
+        const auto without = renderVoiceDirect (Perc, p, sr, 0.1);
+        p[ToneP::Noise] = 100.0f;
+        auto with = renderVoiceDirect (Perc, p, sr, 0.1);
+        for (size_t i = 0; i < with.size(); ++i) with[i] -= without[i];
+        return with;
+    };
+
+    CHECK (energyIn (noiseOnly (1500.0f, 200.0f), 1440, 4800) > 100.0 * energyIn (noiseOnly (1500.0f, 10.0f), 1440, 4800)); // 30-100 ms
+    // Noise Tone is the high-pass cutoff: a higher one removes more of the noise.
+    CHECK (energyIn (noiseOnly (10000.0f, 30.0f), 0, 1440) < 0.3 * energyIn (noiseOnly (300.0f, 30.0f), 0, 1440));
+}
+
+FP_TEST (tone_metal_tune_and_shape)
+{
+    const double sr = 48000.0;
+    auto p = defaultParams (Perc); // Metal 25
+    const auto base = renderVoiceDirect (Perc, p, sr, 0.1);
+    auto up = p;
+    up[ToneP::MetalTune] = 7.0f;
+    CHECK (maxDifference (renderVoiceDirect (Perc, up, sr, 0.1), base) > 0.05f);
+
+    // Without Metal there is no modulator to tune.
+    p[ToneP::Metal] = 0.0f;
+    const auto plain = renderVoiceDirect (Perc, p, sr, 0.1);
+    p[ToneP::MetalTune] = 7.0f;
+    CHECK (maxDifference (renderVoiceDirect (Perc, p, sr, 0.1), plain) == 0.0f);
+
+    // Shape: from a sine towards a square, at the same peak level.
+    auto t = defaultParams (Tom);
+    t[ToneP::Noise] = 0.0f;
+    t[ToneP::Bend] = 0.0f;
+    t[ToneP::Hold] = 60.0f; // 60 ms at full level
+    auto crest = [&] (float shape)
+    {
+        t[ToneP::Shape] = shape;
+        const auto out = renderVoiceDirect (Tom, t, sr, 0.06);
+        const double rms = std::sqrt (energyIn (out, 0, out.size()) / (double) out.size());
+        return std::make_pair ((float) rms / peakIn (out, 0, out.size()), peakIn (out, 0, out.size()));
+    };
+    const auto [clean, cleanPeak] = crest (0.0f);
+    const auto [shaped, shapedPeak] = crest (100.0f);
+    CHECK (clean < 0.75f);
+    CHECK (shaped > 0.85f);
+    CHECK (shapedPeak < 1.001f);
+    CHECK (cleanPeak > 0.99f);
 }
 
 FP_TEST (buffer_size_edge_cases)

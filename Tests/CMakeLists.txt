@@ -30,6 +30,12 @@ set(FLOORPLAN_CORE_TESTS
     snare_drop_and_ring_change_the_shell
     clap_envelope_controls
     envelope_curves_describe_the_voices
+    metal_and_tone_defaults_match_the_originals
+    metal_attack_hold_and_tail_follow_the_envelope
+    metal_detune_high_cut_and_stick
+    tone_envelope_model_matches_rendered_output
+    tone_noise_tone_and_length
+    tone_metal_tune_and_shape
     buffer_size_edge_cases
     sample_rate_change_preserves_decay_time
     aux_routing

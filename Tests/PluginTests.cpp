@@ -367,13 +367,20 @@ FP_TEST (parameters_are_automatable)
 
 FP_TEST (advanced_parameters_keep_existing_indices)
 {
-    // The 141 parameters of 0.1.0 keep their positions; Advanced ones follow.
+    // The 141 parameters of 0.1.0 keep their positions, then the 14 Advanced
+    // ones of 0.1.1 (kick, snare, clap), then the hat, cymbal, perc and tom
+    // extras added after it.
     auto p = makeProcessor();
     const auto& params = p->getParameters();
     auto idAt = [&] (int i) { return dynamic_cast<juce::RangedAudioParameter*> (params[i])->getParameterID(); };
     CHECK (idAt (0) == ids::synth (Kick, KickP::Tune));
     CHECK (idAt (140) == ids::midiOut);
     CHECK (idAt (141) == ids::synth (Kick, KickP::Attack));
+    CHECK (idAt (146) == ids::synth (Snare, SnareP::Drop));
+    CHECK (idAt (151) == ids::synth (Clap, ClapP::Attack));
+    CHECK (idAt (154) == ids::synth (Clap, ClapP::Jitter));
+    CHECK (idAt (155) == ids::synth (ClosedHat, MetalP::Attack));
+    CHECK (idAt (params.size() - 1) == ids::synth (Cymbal, MetalP::Stick));
 }
 
 FP_TEST (old_state_sets_new_parameters_to_default)
@@ -398,6 +405,8 @@ FP_TEST (old_state_sets_new_parameters_to_default)
     CHECK (getParam (*p, ids::synth (Kick, KickP::Attack)) == 0.0f);
     CHECK (getParam (*p, ids::synth (Kick, KickP::Sub)) == 0.0f);
     CHECK (std::abs (getParam (*p, ids::synth (Kick, KickP::ClickTone)) - 1800.0f) < 1.0f);
+    CHECK (std::abs (getParam (*p, ids::synth (OpenHat, MetalP::HighCut)) - 20000.0f) < 1.0f);
+    CHECK (std::abs (getParam (*p, ids::synth (Tom, ToneP::NoiseLength)) - 30.0f) < 0.01f);
 
     // And a current state round-trips them.
     setParam (*p, ids::synth (Kick, KickP::Shape), 40.0f);

@@ -138,16 +138,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
 
     // Advanced Mode synthesis parameters come last, so adding them never moves
     // the index of an existing parameter (some hosts store automation by index).
+    // Each generation of extras goes after the ones before it.
     auto advanced = std::make_unique<juce::AudioProcessorParameterGroup> ("advanced", "Advanced", " | ");
-    for (int v = 0; v < kNumVoices; ++v)
-    {
-        const juce::String vName (kVoiceSpecs[(size_t) v].name);
-        for (int p = kNumSynthParams; p < numVoiceParams (v); ++p)
+    for (int gen = 0; gen < kNumExtrasGenerations; ++gen)
+        for (int v = 0; v < kNumVoices; ++v)
         {
-            const auto& ps = voiceParamSpec (v, p);
-            advanced->addChild (makeFloat (ids::synth (v, p), vName + " " + ps.name, ps.min, ps.max, ps.def, ps.centre, ps.unit));
+            if (extrasGeneration (kVoiceSpecs[(size_t) v].engine) != gen)
+                continue;
+            const juce::String vName (kVoiceSpecs[(size_t) v].name);
+            for (int p = kNumSynthParams; p < numVoiceParams (v); ++p)
+            {
+                const auto& ps = voiceParamSpec (v, p);
+                advanced->addChild (makeFloat (ids::synth (v, p), vName + " " + ps.name, ps.min, ps.max, ps.def, ps.centre, ps.unit));
+            }
         }
-    }
     layout.add (std::move (advanced));
 
     return layout;

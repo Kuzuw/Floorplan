@@ -6,6 +6,28 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Six Advanced parameters for the closed hat, open hat and cymbal, all automatable:
+  - Attack and Hold: a fade-in of up to 500 ms and a hold at full level before the decay.
+  - Tail: a second decay, four times slower, mixed in under the main one.
+  - Detune: moves the six partials away from their fixed ratios.
+  - High Cut: a low-pass on the whole voice, switched off at its maximum.
+  - Stick: a short click of high-passed noise at the start of the hit.
+- Six Advanced parameters for the percussion and low tom:
+  - Attack and Hold, as on the kick.
+  - Noise Tone and Noise Length: the noise transient's high-pass cutoff and decay, previously fixed at 1.5 kHz and 30 ms.
+  - Metal Tune: the pitch of the Metal modulator, in semitones.
+  - Shape: waveshapes the sine towards a square.
+- Pitch/Env tab for the hats, cymbal, percussion and tom:
+  - Hats and cymbal: the amplitude envelope, including the tail.
+  - Percussion and tom: amplitude, noise and pitch.
+
+### Changed
+
+- Every voice now has Advanced controls. Projects and kits from earlier versions load the new parameters at defaults that sound like those voices did in 0.1.1. Tests compare each voice with a copy of the 0.1.1 code.
+- The new parameters come after all existing ones, including the kick, snare and clap parameters of 0.1.1, so no existing parameter index changes.
+
 ## [0.1.1] - 2026-11-01
 
 ### Added
