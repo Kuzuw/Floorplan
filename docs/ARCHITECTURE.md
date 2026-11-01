@@ -44,14 +44,21 @@ table, so adding a parameter to a voice is one edit. Per-engine index
 namespaces (`KickP::Tune`, `SnareP::Snappy`, …) make the DSP code readable
 without string lookups.
 
-An engine can add extra parameters for Advanced Mode (`kKickExtras`, returned
-by `extraParams()`). A voice receives them in the same array, after its main
-six, so `numVoiceParams()` and `voiceParamSpec()` cover both. Their defaults
-must leave the sound unchanged, because projects and kits saved earlier do not
-contain them. `paramPage()` says which inspector tab shows each parameter.
+An engine can add extra parameters for Advanced Mode (`kKickExtras`,
+`kSnareExtras`, `kClapExtras`, returned by `extraParams()`). A voice receives
+them in the same array, after its main six, so `numVoiceParams()` and
+`voiceParamSpec()` cover both. Their defaults must leave the sound unchanged,
+because projects and kits saved earlier do not contain them; tests compare each
+voice at its defaults with a copy of its earlier code. `envelopePage()` lists
+the controls of an engine's Pitch/Env tab in display order, and `paramPage()`
+says which tab shows each parameter.
+
+The Pitch/Env tab draws `describeEnvelopes()` (`Voices.cpp`): each voice
+computes its curves from the same formulas as its DSP (kick, snare) or runs
+its own envelope code (the clap's `ClapEnvelope`).
 
 `ParameterLayout.cpp` turns the table into an `AudioProcessorValueTreeState`
-layout of 146 parameters. The extras sit in a last "Advanced" group, so adding
+layout of 155 parameters. The extras sit in a last "Advanced" group, so adding
 them never moves an existing parameter's index. `ParameterCache` resolves every parameter's raw
 `std::atomic<float>*` once at construction, so the audio thread reads plain
 atomics and never looks anything up by string.

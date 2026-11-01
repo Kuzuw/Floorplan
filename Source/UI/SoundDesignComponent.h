@@ -59,6 +59,7 @@ private:
     int dividerX = -1;                       // standard mode: between source and tone controls
     int shownNote = -1;
     std::vector<float> previewMin, previewMax;
+    EnvelopeCurves envelopes;                // Pitch/Env page, updated with the preview
     float previewSeconds = 1.0f;
 };
 

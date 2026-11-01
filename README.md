@@ -43,7 +43,7 @@
 - **Built for dance music.** Four-on-the-floor defaults, swing and groove templates, offbeat open hats with closed-hat choke, ratchets, flams, probability and per-step parameter locks.
 - **Tight timing.** The sequencer follows the host play head with sample-accurate events, handles tempo changes, loops and transport jumps, and never uses a wall-clock timer.
 - **Very light.** About 0.3% of one laptop core for a typical groove. Idle voices cost nothing, and the audio thread never allocates, locks or touches the disk.
-- **Production-ready plumbing.** 146 automatable parameters, versioned project state, kit presets, a documented JSON pattern format, MIDI learn and optional per-voice outputs.
+- **Production-ready plumbing.** 155 automatable parameters, versioned project state, kit presets, a documented JSON pattern format, MIDI learn and optional per-voice outputs.
 - **Hackable.** The DSP and sequencer core is plain C++17 with no JUCE dependency, so you can unit-test and benchmark it in isolation. A new voice is one table entry plus one class.
 
 ## Sounds
@@ -51,10 +51,10 @@
 | Voice | Engine | Controls |
 | --- | --- | --- |
 | Kick | Sine body, exponential pitch sweep, hold stage, noise click | Tune, Bend, Bend Time, Decay, Click, Punch. Advanced Mode adds Attack, Shape, Sub, Click Tone and Click Length |
-| Snare | Two-mode tuned shell plus high-passed noise wires | Tune, Tone, Decay, Snappy, Body, Width |
+| Snare | Two-mode tuned shell plus high-passed noise wires | Tune, Tone, Decay, Snappy, Body, Width. Advanced Mode adds Drop, Drop Time, Ring, Wire Tone and Wire Delay |
 | Closed Hat | Six band-limited square oscillators and noise, high-passed | Tune, Decay, Bright, Metal, Tone, Width |
 | Open Hat | Same metallic engine, choked by the closed hat | Tune, Decay, Bright, Metal, Tone, Width |
-| Clap | Band-passed noise shaped by a multi-burst envelope | Tune, Decay, Spread, Bursts, Tone, Width |
+| Clap | Band-passed noise shaped by a multi-burst envelope | Tune, Decay, Spread, Bursts, Tone, Width. Advanced Mode adds Attack, Burst Length, Tail Level and Jitter |
 | Percussion | Tuned sine with pitch sweep, FM "metal" and noise transient | Tune, Bend, Bend Time, Decay, Noise, Metal |
 | Low Tom | Same tuned engine, lower range | Tune, Bend, Bend Time, Decay, Noise, Metal |
 | Cymbal | Metallic engine with a different partial set and long decay | Tune, Decay, Bright, Metal, Tone, Width |

@@ -1,5 +1,4 @@
 #include "UI/SoundDesignComponent.h"
-#include "Instruments/KickVoice.h"
 #include "Parameters/ParameterIDs.h"
 
 namespace fp::ui
@@ -119,9 +118,12 @@ std::vector<int> SoundDesignComponent::pageParams (ParamPage page) const
 {
     const auto engine = kVoiceSpecs[(size_t) boundVoice].engine;
 
-    // The kick's envelope controls read in stage order, then the pitch sweep.
-    if (page == ParamPage::PitchEnvelope && engine == EngineKind::Kick)
-        return { KickP::Attack, KickP::Punch, KickP::Decay, KickP::Bend, KickP::BendTime };
+    // The Pitch/Env page has its own display order.
+    if (page == ParamPage::PitchEnvelope)
+    {
+        const auto order = envelopePage (engine);
+        return std::vector<int> (order.data, order.data + order.count);
+    }
 
     std::vector<int> list;
     for (int i = 0; i < numVoiceParams (boundVoice); ++i)
@@ -170,13 +172,9 @@ void SoundDesignComponent::renderPreview()
     const auto params = currentParams();
 
     // Show roughly the audible length, between 150 ms and 2.5 s.
-    float lengthMs = 300.0f;
-    for (int i = 0; i < kNumSynthParams; ++i)
-        if (juce::String (kVoiceSpecs[(size_t) boundVoice].params[(size_t) i].id) == "decay")
-            lengthMs = params[(size_t) i] * 1.1f;
-    if (kVoiceSpecs[(size_t) boundVoice].engine == EngineKind::Kick)
-        lengthMs += params[KickP::Attack] + params[KickP::Punch] * 0.6f;
-    previewSeconds = juce::jlimit (0.15f, 2.5f, lengthMs * 0.001f);
+    previewSeconds = juce::jlimit (0.15f, 2.5f, hitLengthSeconds (boundVoice, params.data()));
+    if (! describeEnvelopes (boundVoice, params.data(), previewSeconds, envelopes))
+        envelopes = {};
 
     voice->trigger (params.data(), TriggerInfo {});
     const int total = (int) (previewSeconds * sr);
@@ -341,50 +339,61 @@ void SoundDesignComponent::resized()
 
 void SoundDesignComponent::paintEnvelope (juce::Graphics& g)
 {
-    // Drawn from KickVoice's envelope model over the same time span as the scope.
-    using namespace KickP;
-    const auto p = currentParams();
+    // The voice's own envelope curves (describeEnvelopes), over the scope's span.
     const auto screen = drawScreen (g, envelopeArea.toFloat()).reduced (8.0f, 6.0f);
     auto legend = screen.withHeight (12.0f);
     const auto plot = screen.withTrimmedTop (18.0f).withTrimmedBottom (2.0f);
-    const float span = previewSeconds;
-    const float bendMax = kVoiceSpecs[Kick].params[Bend].max;
+    auto xAt = [&] (float t) { return plot.getX() + plot.getWidth() * juce::jmin (1.0f, t / previewSeconds); };
 
-    auto xAt = [&] (float t) { return plot.getX() + plot.getWidth() * juce::jmin (1.0f, t / span); };
-
-    // Stage boundaries: end of attack, end of hold.
-    const float attack = p[Attack] * 0.001f, hold = p[Punch] * 0.01f * 0.06f;
     g.setColour (colours::screenGhost);
     g.fillRect (plot.getX(), plot.getBottom(), plot.getWidth(), 1.0f);
-    for (float t : { attack, attack + hold })
+    for (float t : envelopes.markers)
         if (t > 0.0f)
             g.fillRect (xAt (t), plot.getY(), 1.0f, plot.getHeight());
 
-    juce::Path ampPath, pitchPath;
-    constexpr int points = 200;
-    for (int i = 0; i <= points; ++i)
+    // Amplitude curves: orange, then paper white; pitch: blue, drawn first.
+    auto colourOf = [] (const EnvelopeCurves::Curve& c, int ampIndex)
     {
-        const float t = span * (float) i / (float) points;
-        const float x = xAt (t);
-        const float ampY = plot.getBottom() - plot.getHeight() * KickVoice::ampEnvelope (p.data(), t);
-        const float pitchY = plot.getBottom() - plot.getHeight() * juce::jlimit (0.0f, 1.0f, KickVoice::pitchSemitones (p.data(), t) / bendMax);
-        i == 0 ? ampPath.startNewSubPath (x, ampY) : ampPath.lineTo (x, ampY);
-        i == 0 ? pitchPath.startNewSubPath (x, pitchY) : pitchPath.lineTo (x, pitchY);
-    }
-    g.setColour (colours::familyMetal);
-    g.strokePath (pitchPath, juce::PathStrokeType (1.5f));
-    g.setColour (colours::accent);
-    g.strokePath (ampPath, juce::PathStrokeType (2.0f));
+        return c.pitch ? colours::familyMetal : ampIndex == 0 ? colours::accent : colours::screenText;
+    };
 
     g.setFont (monoFont (9.5f, true));
-    g.setColour (colours::accent);
-    g.drawText ("AMP", legend.removeFromLeft (34.0f), juce::Justification::centredLeft);
-    g.setColour (colours::familyMetal);
-    g.drawText ("PITCH +" + juce::String (p[Bend], 1) + " ST", legend.removeFromLeft (120.0f), juce::Justification::centredLeft);
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        int ampIndex = 0;
+        for (int c = 0; c < envelopes.count; ++c)
+        {
+            const auto& curve = envelopes.curves[(size_t) c];
+            const auto colour = colourOf (curve, ampIndex);
+            if (! curve.pitch)
+                ++ampIndex;
+            if (curve.pitch != (pass == 0))
+                continue;
+
+            juce::Path path;
+            for (int i = 0; i <= EnvelopeCurves::kPoints; ++i)
+            {
+                const float x = plot.getX() + plot.getWidth() * (float) i / (float) EnvelopeCurves::kPoints;
+                const float y = plot.getBottom() - plot.getHeight() * curve.y[(size_t) i];
+                i == 0 ? path.startNewSubPath (x, y) : path.lineTo (x, y);
+            }
+            g.setColour (colour);
+            g.strokePath (path, juce::PathStrokeType (curve.pitch ? 1.5f : 2.0f));
+        }
+    }
+
+    int ampIndex = 0;
+    for (int c = 0; c < envelopes.count; ++c)
+    {
+        const auto& curve = envelopes.curves[(size_t) c];
+        g.setColour (colourOf (curve, ampIndex));
+        if (! curve.pitch)
+            ++ampIndex;
+        const juce::String label (curve.label);
+        g.drawText (label, legend.removeFromLeft ((float) label.length() * 7.0f + 14.0f), juce::Justification::centredLeft);
+    }
     g.setColour (colours::screenDim);
-    auto ms = [] (float seconds) { return juce::String (juce::roundToInt (seconds * 1000.0f)); };
-    g.drawText ("A " + ms (attack) + "  H " + ms (hold) + "  D " + ms (p[Decay] * 0.001f) + " MS",
-                legend, juce::Justification::centredRight);
+    g.drawText (juce::String (juce::roundToInt (previewSeconds * 1000.0f)) + " MS", legend, juce::Justification::centredRight);
 }
 
 void SoundDesignComponent::paint (juce::Graphics& g)

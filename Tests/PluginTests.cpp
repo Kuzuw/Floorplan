@@ -4,6 +4,7 @@
 
 #include "PluginProcessor.h"
 #include "Parameters/ParameterIDs.h"
+#include "UI/MainComponent.h"
 #include "Presets/FactoryContent.h"
 #include "Presets/PatternSerializer.h"
 
@@ -424,8 +425,9 @@ static void clickButtonNamed (juce::Component& root, const juce::String& text)
     }
 }
 
-// Optional `tab`: the text of an Advanced Mode tab to show (e.g. "PITCH/ENV").
-static int renderScreenshot (const juce::File& target, float scale, bool advanced, const juce::String& tab = {})
+// Optional `tab`: the text of an Advanced Mode tab to show (e.g. "PITCH/ENV");
+// `voice`: the voice to select (default: the kick).
+static int renderScreenshot (const juce::File& target, float scale, bool advanced, const juce::String& tab = {}, int voice = 0)
 {
     auto p = makeProcessor();
     p->setInternalPlaying (true);
@@ -434,6 +436,9 @@ static int renderScreenshot (const juce::File& target, float scale, bool advance
 
     std::unique_ptr<juce::AudioProcessorEditor> editor (p->createEditor());
     editor->setSize (1280, 800);
+    for (auto* child : editor->getChildren())
+        if (auto* main = dynamic_cast<ui::MainComponent*> (child))
+            main->selectVoice (voice);
     if (tab.isNotEmpty())
         clickButtonNamed (*editor, tab);
     const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, scale);
@@ -454,6 +459,7 @@ int main (int argc, char** argv)
         return renderScreenshot (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]),
                                  argc > 3 ? (float) std::atof (argv[3]) : 1.0f,
                                  argc > 4 && std::strcmp (argv[4], "--advanced") == 0,
-                                 argc > 5 ? juce::String (argv[5]) : juce::String());
+                                 argc > 5 ? juce::String (argv[5]) : juce::String(),
+                                 argc > 6 ? juce::jlimit (0, kNumVoices - 1, std::atoi (argv[6])) : 0);
     return fptest::runMain (argc, argv);
 }

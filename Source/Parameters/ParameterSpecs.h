@@ -48,8 +48,8 @@ struct VoiceSpec
 // Index meaning for each engine. Keep in sync with the tables below. Indices
 // from kNumSynthParams on are the engine's extra (Advanced Mode) parameters.
 namespace KickP  { enum { Tune, Bend, BendTime, Decay, Click, Punch, Attack, Shape, Sub, ClickTone, ClickLength }; }
-namespace SnareP { enum { Tune, Tone, Decay, Snappy, BodyDecay, Width }; }
-namespace ClapP  { enum { Tune, Decay, Spread, Bursts, Tone, Width }; }
+namespace SnareP { enum { Tune, Tone, Decay, Snappy, BodyDecay, Width, Drop, DropTime, Ring, WireTone, WireDelay }; }
+namespace ClapP  { enum { Tune, Decay, Spread, Bursts, Tone, Width, Attack, BurstLength, TailLevel, Jitter }; }
 namespace MetalP { enum { Tune, Decay, Bright, Metal, Tone, Width }; }
 namespace ToneP  { enum { Tune, Bend, BendTime, Decay, Noise, Metal }; }
 
@@ -134,6 +134,22 @@ inline constexpr SynthParamSpec kKickExtras[] {
     { "clicklen",  "Click Len", "ms", 1.0f,   50.0f,    7.0f,    10.0f   },
 };
 
+// Wire Tone is a low-pass on the wires; at its maximum it is switched off.
+inline constexpr SynthParamSpec kSnareExtras[] {
+    { "drop",      "Drop",       "%",  0.0f,    100.0f,   50.0f,    0.0f    },
+    { "droptime",  "Drop Time",  "ms", 1.0f,    50.0f,    6.0f,     10.0f   },
+    { "ring",      "Ring",       "%",  0.0f,    100.0f,   45.0f,    0.0f    },
+    { "wiretone",  "Wire Tone",  "Hz", 2000.0f, 20000.0f, 20000.0f, 8000.0f },
+    { "wiredelay", "Wire Delay", "ms", 0.0f,    20.0f,    0.0f,     0.0f    },
+};
+
+inline constexpr SynthParamSpec kClapExtras[] {
+    { "attack",    "Attack",    "ms", 0.1f,  5.0f,   0.4f,   1.0f   },
+    { "burstlen",  "Burst Len", "%",  25.0f, 400.0f, 100.0f, 100.0f },
+    { "taillevel", "Tail Level", "%",  0.0f,  100.0f, 100.0f, 0.0f   },
+    { "jitter",    "Jitter",    "%",  0.0f,  100.0f, 0.0f,   0.0f   },
+};
+
 struct ParamList
 {
     const SynthParamSpec* data;
@@ -144,12 +160,16 @@ constexpr ParamList extraParams (EngineKind engine) noexcept
 {
     switch (engine)
     {
-        case EngineKind::Kick: return { kKickExtras, (int) std::size (kKickExtras) };
-        default:               return { nullptr, 0 };
+        case EngineKind::Kick:  return { kKickExtras, (int) std::size (kKickExtras) };
+        case EngineKind::Snare: return { kSnareExtras, (int) std::size (kSnareExtras) };
+        case EngineKind::Clap:  return { kClapExtras, (int) std::size (kClapExtras) };
+        default:                return { nullptr, 0 };
     }
 }
 
 static_assert (std::size (kKickExtras) <= (size_t) kMaxExtraParams);
+static_assert (std::size (kSnareExtras) <= (size_t) kMaxExtraParams);
+static_assert (std::size (kClapExtras) <= (size_t) kMaxExtraParams);
 
 // All synthesis parameters of a voice: the main six, then the extras.
 constexpr int numVoiceParams (int voice) noexcept
@@ -164,25 +184,42 @@ constexpr const SynthParamSpec& voiceParamSpec (int voice, int index) noexcept
                                    : extraParams (spec.engine).data[index - kNumSynthParams];
 }
 
-// Advanced Mode inspector page a synthesis parameter is shown on.
+// Advanced Mode inspector page a synthesis parameter is shown on. Engines
+// with a Pitch/Env page list its controls here, in display order (amplitude
+// stages first, then pitch); everything else is on the Source page.
 enum class ParamPage : uint8_t { Source, PitchEnvelope };
+
+inline constexpr int kKickEnvelopePage[]  { KickP::Attack, KickP::Punch, KickP::Decay, KickP::Bend, KickP::BendTime };
+inline constexpr int kSnareEnvelopePage[] { SnareP::BodyDecay, SnareP::Decay, SnareP::WireDelay, SnareP::Drop, SnareP::DropTime };
+inline constexpr int kClapEnvelopePage[]  { ClapP::Bursts, ClapP::Spread, ClapP::Jitter, ClapP::Attack, ClapP::BurstLength, ClapP::Decay };
+
+struct IndexList
+{
+    const int* data;
+    int count;
+};
+
+constexpr IndexList envelopePage (EngineKind engine) noexcept
+{
+    switch (engine)
+    {
+        case EngineKind::Kick:  return { kKickEnvelopePage, (int) std::size (kKickEnvelopePage) };
+        case EngineKind::Snare: return { kSnareEnvelopePage, (int) std::size (kSnareEnvelopePage) };
+        case EngineKind::Clap:  return { kClapEnvelopePage, (int) std::size (kClapEnvelopePage) };
+        default:                return { nullptr, 0 };
+    }
+}
+
+constexpr bool hasEnvelopePage (EngineKind engine) noexcept { return envelopePage (engine).count > 0; }
 
 constexpr ParamPage paramPage (EngineKind engine, int index) noexcept
 {
-    if (engine == EngineKind::Kick)
-    {
-        switch (index)
-        {
-            case KickP::Bend: case KickP::BendTime: case KickP::Attack: case KickP::Punch: case KickP::Decay:
-                return ParamPage::PitchEnvelope;
-            default: break;
-        }
-    }
+    const auto page = envelopePage (engine);
+    for (int i = 0; i < page.count; ++i)
+        if (page.data[i] == index)
+            return ParamPage::PitchEnvelope;
     return ParamPage::Source;
 }
-
-// Whether an engine has a Pitch & Envelope page (its envelope DSP is exposed).
-constexpr bool hasEnvelopePage (EngineKind engine) noexcept { return engine == EngineKind::Kick; }
 
 // Groove and sequencer option tables (index == stored parameter value).
 inline constexpr std::array<const char*, 5> kResolutionNames { "1/8", "1/16", "1/32", "1/8T", "1/16T" };

@@ -6,7 +6,9 @@
 #include "Audio/TripleBuffer.h"
 #include "DSP/DSPCore.h"
 #include "DSP/SineTable.h"
+#include "Instruments/ClapVoice.h"
 #include "Instruments/KickVoice.h"
+#include "Instruments/SnareVoice.h"
 #include "Sequencer/Pattern.h"
 #include "Sequencer/Sequencer.h"
 
@@ -347,14 +349,109 @@ VoiceArray defaultParams (int voice)
 }
 
 // One hit of a voice, rendered directly (no channel strip), left channel.
-std::vector<float> renderVoiceDirect (int voice, const VoiceArray& p, double sr, double seconds)
+std::vector<float> renderVoiceDirect (int voice, const VoiceArray& p, double sr, double seconds,
+                                      std::vector<float>* right = nullptr)
 {
     auto v = createSynthVoice (voice);
     v->prepare (sr);
     v->trigger (p.data(), TriggerInfo {});
     std::vector<float> L ((size_t) (sr * seconds)), R (L.size());
     v->render (L.data(), R.data(), (int) L.size());
+    if (right != nullptr)
+        *right = R;
     return L;
+}
+
+using Stereo = std::pair<std::vector<float>, std::vector<float>>;
+
+float maxDifference (const std::vector<float>& a, const std::vector<float>& b)
+{
+    float d = 0.0f;
+    for (size_t i = 0; i < std::min (a.size(), b.size()); ++i) d = std::max (d, std::abs (a[i] - b[i]));
+    return d;
+}
+
+// The snare exactly as 0.1.0 rendered it.
+Stereo renderOriginalSnare (const float* p, double sr, int total)
+{
+    using namespace SnareP;
+    const float inv = (float) (1.0 / sr);
+    const float freq = p[Tune], tone = p[Tone] * 0.01f;
+    const float bodyMix = 1.0f - 0.8f * tone, noiseMix = 0.3f + 0.9f * tone, width = p[Width] * 0.01f;
+    const float bodyCoef = dsp::decayCoef (p[BodyDecay] * 0.001f, sr), noiseCoef = dsp::decayCoef (p[Decay] * 0.001f, sr);
+    const float pitchCoef = dsp::timeConstantCoef (0.006f, sr);
+    float bodyEnv = 1.0f, noiseEnv = 1.0f, pitchEnv = 1.0f, ph1 = 0.0f, ph2 = 0.0f;
+    const float cutoff = 600.0f * std::pow (10.0f, p[Snappy] * 0.01f);
+    dsp::Svf hpL, hpR;
+    hpL.setup (cutoff, 0.7f, sr);
+    hpR.setup (cutoff, 0.7f, sr);
+    dsp::Noise noiseA, noiseB { 0x1234567u };
+    const bool stereo = width > 0.001f;
+
+    Stereo out { std::vector<float> ((size_t) total), std::vector<float> ((size_t) total) };
+    for (size_t i = 0; i < (size_t) total; ++i)
+    {
+        const float sweep = 1.0f + 0.5f * pitchEnv;
+        pitchEnv *= pitchCoef;
+        ph1 += freq * sweep * inv;
+        ph2 += freq * 1.62f * sweep * inv;
+        if (ph1 >= 1.0f) ph1 -= 1.0f;
+        if (ph2 >= 1.0f) ph2 -= 1.0f;
+        const float body = (dsp::SineTable::sin2pi (ph1) + 0.45f * dsp::SineTable::sin2pi (ph2)) * bodyEnv * bodyMix;
+        bodyEnv *= bodyCoef;
+        const float n1 = noiseA.next();
+        const float wiresL = hpL.highpass (n1) * noiseEnv * noiseMix;
+        const float wiresR = stereo ? hpR.highpass (n1 + width * (noiseB.next() - n1)) * noiseEnv * noiseMix : wiresL;
+        noiseEnv *= noiseCoef;
+        out.first[i] = (body + wiresL) * 0.7f;
+        out.second[i] = (body + wiresR) * 0.7f;
+    }
+    return out;
+}
+
+// The clap exactly as 0.1.0 rendered it.
+Stereo renderOriginalClap (const float* p, double sr, int total)
+{
+    using namespace ClapP;
+    dsp::Svf bpL, bpR;
+    bpL.setup (p[Tune], 0.8f + p[Tone] * 0.03f, sr);
+    bpR.setup (p[Tune], 0.8f + p[Tone] * 0.03f, sr);
+    const float bandGain = bpL.k * 2.2f;
+    const int bursts = std::clamp ((int) std::lround (p[Bursts]), 1, 6);
+    const int spreadSamples = std::max (1, (int) (p[Spread] * 0.001f * (float) sr));
+    const float tailCoef = dsp::decayCoef (p[Decay] * 0.001f, sr);
+    const float burstCoef = dsp::decayCoef (std::min (p[Spread] * 1.6f, 30.0f) * 0.001f, sr);
+    const float attackInc = 1.0f / std::max (1.0f, 0.0004f * (float) sr);
+    const float width = p[Width] * 0.01f;
+    const bool stereo = width > 0.001f;
+    int burstIndex = 0, nextBurstAt = 0, counter = 0;
+    float envCoef = burstCoef, env = 0.0f;
+    bool attacking = false;
+    dsp::Noise noiseA { 0xC1A9u }, noiseB { 0xBEEFu };
+
+    Stereo out { std::vector<float> ((size_t) total), std::vector<float> ((size_t) total) };
+    for (size_t i = 0; i < (size_t) total; ++i)
+    {
+        if (burstIndex < bursts && counter >= nextBurstAt)
+        {
+            envCoef = (burstIndex == bursts - 1) ? tailCoef : burstCoef;
+            attacking = true;
+            ++burstIndex;
+            nextBurstAt += spreadSamples;
+        }
+        ++counter;
+        if (attacking)
+        {
+            env += attackInc;
+            if (env >= 1.0f) { env = 1.0f; attacking = false; }
+        }
+        else
+            env *= envCoef;
+        const float n1 = noiseA.next();
+        out.first[i] = bpL.bandpass (n1) * bandGain * env;
+        out.second[i] = stereo ? bpR.bandpass (n1 + width * (noiseB.next() - n1)) * bandGain * env : out.first[i];
+    }
+    return out;
 }
 
 // The kick exactly as 0.1.0 rendered it, before it had Advanced parameters.
@@ -541,6 +638,205 @@ FP_TEST (kick_click_tone_and_length)
         return low / all;
     };
     CHECK (lowShare (clickOnly (600.0f, 7.0f)) > 2.0 * lowShare (clickOnly (8000.0f, 7.0f)));
+}
+
+// ---------------------------------------------------------------------------
+// Snare and clap: Advanced parameters
+// ---------------------------------------------------------------------------
+FP_TEST (snare_and_clap_defaults_match_the_originals)
+{
+    const double sr = 48000.0;
+    for (int variant = 0; variant < 3; ++variant)
+    {
+        auto s = defaultParams (Snare);
+        auto c = defaultParams (Clap);
+        if (variant == 1)
+        {
+            s[SnareP::Tone] = 90.0f; s[SnareP::Snappy] = 10.0f; s[SnareP::Width] = 0.0f;
+            c[ClapP::Bursts] = 6.0f; c[ClapP::Spread] = 22.0f; c[ClapP::Width] = 0.0f;
+        }
+        if (variant == 2)
+        {
+            s[SnareP::Tune] = 320.0f; s[SnareP::BodyDecay] = 350.0f; s[SnareP::Width] = 100.0f;
+            c[ClapP::Bursts] = 1.0f; c[ClapP::Tone] = 100.0f; c[ClapP::Decay] = 900.0f;
+        }
+
+        std::vector<float> R;
+        auto L = renderVoiceDirect (Snare, s, sr, 1.0, &R);
+        auto ref = renderOriginalSnare (s.data(), sr, (int) L.size());
+        CHECK (maxDifference (L, ref.first) < 1.0e-4f);
+        CHECK (maxDifference (R, ref.second) < 1.0e-4f);
+
+        L = renderVoiceDirect (Clap, c, sr, 1.0, &R);
+        ref = renderOriginalClap (c.data(), sr, (int) L.size());
+        CHECK (maxDifference (L, ref.first) < 1.0e-4f);
+        CHECK (maxDifference (R, ref.second) < 1.0e-4f);
+    }
+}
+
+FP_TEST (snare_envelopes_bound_the_output)
+{
+    // The editor draws SnareVoice's body and wire envelopes. The output can
+    // never exceed what they allow (noise through the high-pass stays < 4).
+    const double sr = 48000.0;
+    auto p = defaultParams (Snare);
+    p[SnareP::Width] = 0.0f;
+    p[SnareP::WireDelay] = 12.0f;
+    p[SnareP::BodyDecay] = 60.0f;
+    p[SnareP::Decay] = 300.0f;
+    p[SnareP::Ring] = 100.0f;
+    const float tone = p[SnareP::Tone] * 0.01f, bodyMix = 1.0f - 0.8f * tone, noiseMix = 0.3f + 0.9f * tone;
+    const auto out = renderVoiceDirect (Snare, p, sr, 0.5);
+
+    bool bounded = true;
+    for (size_t i = 0; i < out.size(); ++i)
+    {
+        const float t = (float) ((double) i / sr);
+        // 0.1 ms of slack on the wires' onset (sample rounding of the delay).
+        const float limit = 0.7f * (2.0f * bodyMix * SnareVoice::bodyEnvelope (p.data(), t)
+                                    + 4.0f * noiseMix * SnareVoice::wireEnvelope (p.data(), t + 1.0e-4f));
+        bounded = bounded && std::abs (out[i]) <= limit + 1.0e-3f;
+    }
+    CHECK (bounded);
+    CHECK (SnareVoice::wireEnvelope (p.data(), 0.011f) == 0.0f);
+    CHECK_NEAR (SnareVoice::pitchDrop (p.data(), 0.0f), 0.5f, 1.0e-6f);
+}
+
+FP_TEST (snare_wire_delay_and_tone)
+{
+    const double sr = 48000.0;
+    auto p = defaultParams (Snare);
+    p[SnareP::Tone] = 100.0f;      // mostly wires
+    p[SnareP::BodyDecay] = 20.0f;
+    const auto now = renderVoiceDirect (Snare, p, sr, 0.1);
+    p[SnareP::WireDelay] = 10.0f;
+    const auto late = renderVoiceDirect (Snare, p, sr, 0.1);
+    CHECK (energyIn (late, 48, 432) < 0.3 * energyIn (now, 48, 432));     // 1-9 ms: wires not yet in
+    CHECK (energyIn (late, 576, 1920) > 0.7 * energyIn (now, 576, 1920)); // 12-40 ms: they are
+
+    // Wire Tone: a low-pass on the wires removes their top end.
+    auto highShare = [] (const std::vector<float>& x)
+    {
+        double diff = 0.0, all = 0.0;
+        for (size_t i = 1; i < 2400; ++i)
+        {
+            diff += (double) (x[i] - x[i - 1]) * (x[i] - x[i - 1]);
+            all += (double) x[i] * x[i];
+        }
+        return diff / all;
+    };
+    p[SnareP::WireDelay] = 0.0f;
+    const auto open = renderVoiceDirect (Snare, p, sr, 0.1);
+    p[SnareP::WireTone] = 2500.0f;
+    const auto dark = renderVoiceDirect (Snare, p, sr, 0.1);
+    CHECK (highShare (dark) < 0.5 * highShare (open));
+}
+
+FP_TEST (snare_drop_and_ring_change_the_shell)
+{
+    // Tone 0 keeps the shell loud. The wires' noise is the same in every
+    // render, so any difference comes from the shell.
+    const double sr = 48000.0;
+    auto p = defaultParams (Snare);
+    p[SnareP::Tone] = 0.0f;
+    p[SnareP::Width] = 0.0f;
+    const auto base = renderVoiceDirect (Snare, p, sr, 0.05);
+
+    auto noDrop = p;
+    noDrop[SnareP::Drop] = 0.0f;
+    // A pitch drop runs the shell faster at first, so the phase leads.
+    CHECK (maxDifference (renderVoiceDirect (Snare, noDrop, sr, 0.05), base) > 0.05f);
+
+    auto noRing = p;
+    noRing[SnareP::Ring] = 0.0f;
+    CHECK (maxDifference (renderVoiceDirect (Snare, noRing, sr, 0.05), base) > 0.05f);
+}
+
+namespace
+{
+std::vector<float> clapEnvelope (const VoiceArray& p, uint32_t seed, double sr, int samples)
+{
+    ClapEnvelope env;
+    env.setup (p.data(), sr, 1.0f, seed);
+    std::vector<float> out ((size_t) samples);
+    for (auto& v : out) v = env.next();
+    return out;
+}
+
+// Hits = points where the envelope starts rising again.
+int countHits (const std::vector<float>& env)
+{
+    int hits = 0;
+    for (size_t i = 1; i < env.size(); ++i)
+        if (env[i] > env[i - 1] && (i < 2 || env[i - 1] <= env[i - 2]))
+            ++hits;
+    return hits;
+}
+} // namespace
+
+FP_TEST (clap_envelope_controls)
+{
+    const double sr = 48000.0;
+    auto p = defaultParams (Clap); // 4 bursts, 9 ms apart
+    const int n = (int) (0.6 * sr);
+    CHECK (countHits (clapEnvelope (p, 1, sr, n)) == 4);
+
+    // Jitter 0: the same spacing whatever the seed. Jitter: a new spacing per
+    // seed, still four hits.
+    CHECK (clapEnvelope (p, 1, sr, n) == clapEnvelope (p, 2, sr, n));
+    p[ClapP::Jitter] = 100.0f;
+    CHECK (clapEnvelope (p, 1, sr, n) != clapEnvelope (p, 2, sr, n));
+    CHECK (countHits (clapEnvelope (p, 2, sr, n)) == 4);
+    p[ClapP::Jitter] = 0.0f;
+
+    // Burst Length: longer hits leave more level before the next one.
+    const auto beforeSecondHit = (size_t) (0.008 * sr);
+    const float normal = clapEnvelope (p, 1, sr, n)[beforeSecondHit];
+    p[ClapP::BurstLength] = 400.0f;
+    CHECK (clapEnvelope (p, 1, sr, n)[beforeSecondHit] > 2.0f * normal);
+    p[ClapP::BurstLength] = 100.0f;
+
+    // Attack: a slower rise.
+    p[ClapP::Attack] = 4.0f;
+    CHECK (clapEnvelope (p, 1, sr, n)[(size_t) (0.002 * sr)] < 0.6f);
+    p[ClapP::Attack] = 0.4f;
+
+    // Tail Level: the tail peaks at that level, and the audio follows.
+    p[ClapP::TailLevel] = 30.0f;
+    const auto quiet = clapEnvelope (p, 1, sr, n);
+    const auto tailStart = (size_t) (0.027 * sr) + 5, tailEnd = (size_t) (0.2 * sr);
+    CHECK_NEAR (*std::max_element (quiet.begin() + (long) tailStart, quiet.begin() + (long) tailEnd), 0.3f, 1.0e-4f);
+    const auto quietAudio = renderVoiceDirect (Clap, p, sr, 0.3);
+    p[ClapP::TailLevel] = 100.0f;
+    const auto loudAudio = renderVoiceDirect (Clap, p, sr, 0.3);
+    const auto from = (size_t) (0.04 * sr), to = (size_t) (0.25 * sr);
+    CHECK (energyIn (quietAudio, from, to) < 0.15 * energyIn (loudAudio, from, to));
+}
+
+FP_TEST (envelope_curves_describe_the_voices)
+{
+    // What the Pitch/Env page draws, for each voice that has one.
+    for (int v = 0; v < kNumVoices; ++v)
+    {
+        const auto p = defaultParams (v);
+        EnvelopeCurves curves;
+        const bool has = describeEnvelopes (v, p.data(), 0.5f, curves);
+        CHECK (has == hasEnvelopePage (kVoiceSpecs[(size_t) v].engine));
+        if (! has)
+            continue;
+        CHECK (curves.count >= 1 && curves.count <= EnvelopeCurves::kMaxCurves);
+        for (int c = 0; c < curves.count; ++c)
+            for (float y : curves.curves[(size_t) c].y)
+                CHECK (y >= 0.0f && y <= 1.0f);
+        CHECK (hitLengthSeconds (v, p.data()) > 0.05f);
+    }
+
+    // The clap curve is the voice's own envelope: four hits at full height.
+    auto p = defaultParams (Clap);
+    EnvelopeCurves curves;
+    describeEnvelopes (Clap, p.data(), 0.3f, curves);
+    std::vector<float> y (curves.curves[0].y.begin(), curves.curves[0].y.end());
+    CHECK (*std::max_element (y.begin(), y.end()) > 0.99f);
 }
 
 FP_TEST (buffer_size_edge_cases)

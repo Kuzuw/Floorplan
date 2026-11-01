@@ -4,6 +4,7 @@
 #include "DSP/SineTable.h"
 
 #include <algorithm>
+#include <array>
 #include <memory>
 
 namespace fp
@@ -135,5 +136,32 @@ private:
 
 // Creates the synthesis engine for a slot of kVoiceSpecs (see Voices.cpp).
 std::unique_ptr<DrumVoice> createSynthVoice (int voiceIndex);
+
+// Curves drawn on the Advanced Mode Pitch/Env page. A voice fills them from
+// the same formulas (or the same envelope code) as its DSP, and tests compare
+// them with the rendered output.
+struct EnvelopeCurves
+{
+    static constexpr int kMaxCurves = 3;
+    static constexpr int kPoints = 240;
+
+    struct Curve
+    {
+        const char* label = "";
+        bool pitch = false;                 // pitch curve rather than an amplitude
+        std::array<float, kPoints + 1> y {}; // 0..1, sampled evenly over the span
+    };
+
+    int count = 0;
+    std::array<Curve, kMaxCurves> curves {};
+    std::array<float, 2> markers { -1.0f, -1.0f }; // stage boundaries in seconds; < 0 = none
+};
+
+// Fills `out` over [0, seconds] from all of the voice's synthesis parameters.
+// Returns false for voices without a Pitch/Env page.
+bool describeEnvelopes (int voiceIndex, const float* params, float seconds, EnvelopeCurves& out);
+
+// Roughly how long one hit lasts at these settings (for preview spans).
+float hitLengthSeconds (int voiceIndex, const float* params);
 
 } // namespace fp

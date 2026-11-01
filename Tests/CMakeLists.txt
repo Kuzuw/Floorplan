@@ -24,6 +24,12 @@ set(FLOORPLAN_CORE_TESTS
     kick_shape_squares_the_body
     kick_sub_lengthens_the_tail
     kick_click_tone_and_length
+    snare_and_clap_defaults_match_the_originals
+    snare_envelopes_bound_the_output
+    snare_wire_delay_and_tone
+    snare_drop_and_ring_change_the_shell
+    clap_envelope_controls
+    envelope_curves_describe_the_voices
     buffer_size_edge_cases
     sample_rate_change_preserves_decay_time
     aux_routing

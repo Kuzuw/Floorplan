@@ -14,7 +14,21 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - Shape: waveshapes the sine body towards a square.
   - Sub: a clean sine at the tuned pitch with a longer tail.
   - Click Tone and Click Length: the click's high-pass cutoff and decay time, previously fixed at 1.8 kHz and 7 ms.
-- Pitch/Env tab for the kick: the amplitude and pitch envelopes, drawn from the same formulas the sound engine uses, above the Attack, Punch, Decay, Bend and Bend Time controls.
+- Five Advanced snare parameters:
+  - Drop and Drop Time: how far above its pitch the shell starts and how fast it settles. These were fixed at +50% and 6 ms.
+  - Ring: the level of the shell's upper mode.
+  - Wire Tone: a low-pass on the wires, switched off at its maximum.
+  - Wire Delay: up to 20 ms between the shell and the wires.
+- Four Advanced clap parameters:
+  - Attack: how fast each hand hit rises. It was fixed at 0.4 ms.
+  - Burst Length: scales the decay of each short hit.
+  - Tail Level: the tail's peak relative to the hits.
+  - Jitter: random spacing of the hits, different on every hit.
+- Pitch/Env tab for the kick, snare and clap. It draws each voice's envelopes above their controls:
+  - Kick: amplitude and pitch.
+  - Snare: body, wires and pitch.
+  - Clap: the burst train.
+  The kick and snare curves use the same formulas as the sound engine. The clap curve runs the clap's own envelope code.
 
 ### Changed
 
@@ -24,7 +38,7 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Knobs show their value while dragging. Compact knobs show it on hover.
 - Track modules hold mute, solo, an activity dot and an audition badge. The mixer strips keep pan, fader and meter.
 - The minimum window size is now 75% of the design size (was 60%), so labels stay readable.
-- Loading a project now sets any parameter it does not contain to its default. Before, such parameters kept whatever value they had. Projects and kits from 0.1.0 load the new kick parameters at defaults that sound exactly like the 0.1.0 kick, and a test checks this.
+- Loading a project now sets any parameter it does not contain to its default. Before, such parameters kept whatever value they had. Projects and kits from 0.1.0 load the new kick, snare and clap parameters at defaults that sound like those voices did in 0.1.0. Tests compare each one with a copy of the 0.1.0 code.
 - New parameters are added after all existing ones, so existing parameter indices do not change.
 
 ## [0.1.0] - 2026-11-01
