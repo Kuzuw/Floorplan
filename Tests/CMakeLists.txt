@@ -1,0 +1,77 @@
+# Core tests: JUCE-free, fast, run everywhere.
+add_executable(floorplan_core_tests CoreTests.cpp)
+target_link_libraries(floorplan_core_tests PRIVATE floorplan_core)
+set_target_properties(floorplan_core_tests PROPERTIES FOLDER Tests)
+
+set(FLOORPLAN_CORE_TESTS
+    sine_table_accuracy
+    decay_coefficient_reaches_minus_60db
+    svf_lowpass_attenuates_highs
+    soft_clip_is_bounded_and_transparent_near_zero
+    noise_is_zero_mean_and_bounded
+    parameter_specs_are_valid
+    extreme_parameters_stay_finite
+    every_voice_makes_sound_and_goes_idle
+    idle_engine_outputs_silence
+    velocity_scales_output
+    trigger_is_sample_accurate
+    mute_and_solo
+    open_hat_is_choked_by_closed_hat
+    retrigger_is_click_free
+    buffer_size_edge_cases
+    sample_rate_change_preserves_decay_time
+    aux_routing
+    random_fuzz_never_produces_nan
+    sample_voice_plays_and_slots_hand_off
+    sequencer_step_timing_is_exact
+    sequencer_is_block_size_invariant
+    swing_delays_odd_steps
+    microtiming_shifts_steps
+    probability_is_statistical_and_deterministic
+    ratchet_and_flam_add_hits
+    transport_loop_does_not_duplicate_or_drop
+    start_mid_pattern_and_stop
+    tempo_change_follows_host
+    pattern_switch_waits_for_cycle_end
+    pattern_chain_advances
+    euclidean_patterns
+    pattern_operations
+    triple_buffer_is_consistent_under_concurrency)
+
+foreach(test_name IN LISTS FLOORPLAN_CORE_TESTS)
+    add_test(NAME core.${test_name} COMMAND floorplan_core_tests ${test_name})
+endforeach()
+
+# Plugin tests: exercise the JUCE processor (state, presets, serialisation).
+# The plugin sources are compiled into a console app (rather than linking the
+# plugin's shared-code library) so the JUCE modules are built exactly once.
+if(TARGET Floorplan)
+    juce_add_console_app(floorplan_plugin_tests PRODUCT_NAME "floorplan_plugin_tests")
+    target_sources(floorplan_plugin_tests PRIVATE PluginTests.cpp ${FLOORPLAN_PLUGIN_SOURCES})
+    target_compile_definitions(floorplan_plugin_tests PRIVATE
+        ${FLOORPLAN_JUCE_DEFINITIONS}
+        JucePlugin_Name="Floorplan")
+    target_link_libraries(floorplan_plugin_tests PRIVATE
+        floorplan_core
+        juce::juce_audio_utils
+        juce::juce_audio_formats
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags)
+    set_target_properties(floorplan_plugin_tests PROPERTIES FOLDER Tests)
+
+    set(FLOORPLAN_PLUGIN_TESTS
+        processor_produces_audio_from_midi
+        internal_transport_plays_default_pattern
+        host_transport_drives_sequencer
+        state_round_trip
+        legacy_state_migration
+        pattern_json_round_trip
+        pattern_json_rejects_garbage
+        factory_presets_load
+        bus_layouts
+        parameters_are_automatable)
+
+    foreach(test_name IN LISTS FLOORPLAN_PLUGIN_TESTS)
+        add_test(NAME plugin.${test_name} COMMAND floorplan_plugin_tests ${test_name})
+    endforeach()
+endif()

@@ -1,0 +1,20 @@
+# Approximates the JUCE house style the code follows.
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: c++17
+ColumnLimit: 140
+IndentWidth: 4
+AccessModifierOffset: -4
+BreakBeforeBraces: Allman
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLambdasOnASingleLine: All
+AllowShortBlocksOnASingleLine: Empty
+SpaceBeforeParens: Always
+SpaceAfterLogicalNot: true
+PointerAlignment: Left
+NamespaceIndentation: None
+FixNamespaceComments: true
+BreakConstructorInitializers: BeforeColon
+IncludeBlocks: Preserve
+SortIncludes: CaseSensitive

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="140" viewBox="0 0 640 140" role="img" aria-label="Floorplan">
+  <rect width="640" height="140" rx="14" fill="#111215"/>
+  <rect x="0.5" y="0.5" width="639" height="139" rx="13.5" fill="none" stroke="#2a2e35"/>
+  <g transform="translate(48 34)">
+    <rect x="0" y="0"  width="31" height="13" rx="2.5" fill="#8e949f" fill-opacity="0.35"/>
+    <rect x="0" y="18" width="39" height="13" rx="2.5" fill="#8e949f" fill-opacity="0.5"/>
+    <rect x="0" y="36" width="47" height="13" rx="2.5" fill="#8e949f" fill-opacity="0.65"/>
+    <rect x="0" y="54" width="56" height="13" rx="2.5" fill="#ff9f1c"/>
+  </g>
+  <text x="128" y="78" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="46" font-weight="700" letter-spacing="2" fill="#e6e8ec">FLOORPLAN</text>
+  <text x="131" y="104" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="14" font-weight="700" letter-spacing="3.5" fill="#8e949f">OPEN-SOURCE HOUSE &amp; EDM DRUM MACHINE</text>
+  <g transform="translate(470 40)">
+    <rect x="0"   y="0" width="22" height="22" rx="3" fill="#ff9f1c"/>
+    <rect x="28"  y="0" width="22" height="22" rx="3" fill="#212429"/>
+    <rect x="56"  y="0" width="22" height="22" rx="3" fill="#ff9f1c" fill-opacity="0.75"/>
+    <rect x="84"  y="0" width="22" height="22" rx="3" fill="#212429"/>
+    <rect x="112" y="0" width="22" height="22" rx="3" fill="#ffd27a"/>
+    <rect x="0"   y="28" width="22" height="22" rx="3" fill="#212429"/>
+    <rect x="28"  y="28" width="22" height="22" rx="3" fill="#ff9f1c" fill-opacity="0.6"/>
+    <rect x="56"  y="28" width="22" height="22" rx="3" fill="#212429"/>
+    <rect x="84"  y="28" width="22" height="22" rx="3" fill="#ff9f1c" fill-opacity="0.6"/>
+    <rect x="112" y="28" width="22" height="22" rx="3" fill="#212429"/>
+  </g>
+</svg>

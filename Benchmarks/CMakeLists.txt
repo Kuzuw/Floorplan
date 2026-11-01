@@ -1,0 +1,3 @@
+add_executable(floorplan_bench EngineBenchmark.cpp)
+target_link_libraries(floorplan_bench PRIVATE floorplan_core)
+set_target_properties(floorplan_bench PROPERTIES FOLDER Benchmarks)
