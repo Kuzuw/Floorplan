@@ -118,16 +118,16 @@ void Knob::paint (juce::Graphics& g)
     if (layout == Layout::full)
     {
         g.setFont (labelFont());
-        g.setColour (enabled ? colours::ink : colours::greyLight);
+        g.setColour (enabled ? colours::label : colours::greyLight);
         g.drawFittedText (label.toUpperCase(), r.removeFromTop (15), juce::Justification::centred, 1, 0.7f);
-        g.setFont (monoFont (11.5f, true));
-        g.setColour (dragging ? colours::accentText : (enabled ? colours::inkSoft : colours::greyLight));
+        g.setFont (monoFont (12.0f));
+        g.setColour (dragging ? colours::accentText : (enabled ? colours::text : colours::greyLight));
         g.drawFittedText (valueText, r.removeFromBottom (15), juce::Justification::centred, 1, 0.6f);
         return;
     }
 
     const bool showValue = (hovering || dragging) && hasValue;
-    g.setFont (showValue ? monoFont (11.0f, true) : labelFont (10.0f));
+    g.setFont (showValue ? monoFont (11.5f) : labelFont (10.0f));
     g.setColour (showValue ? colours::accentText : (enabled ? colours::grey : colours::greyLight));
     g.drawFittedText (showValue ? valueText : label.toUpperCase(), r.removeFromBottom (15), juce::Justification::centred, 1, 0.6f);
 }
@@ -197,11 +197,30 @@ void LevelMeter::setLevels (float left, float right)
 
 void LevelMeter::paint (juce::Graphics& g)
 {
-    // Monochrome segment column(s): ink segments, orange near 0 dB, red at clip.
-    const auto inner = getLocalBounds().toFloat();
-    const float gap = 1.5f;
+    // LED bar on a dark window: cream segments, orange in the top fifth, red
+    // at clip. A stereo meter prints "L/R" up its right edge.
+    auto window = getLocalBounds().toFloat();
+    g.setColour (colours::screen);
+    g.fillRoundedRectangle (window, 2.0f);
+
+    auto inner = window.reduced (2.0f);
+    if (numChannels == 2 && inner.getWidth() > 18.0f)
+    {
+        const auto legend = inner.removeFromRight (9.0f);
+        {
+            juce::Graphics::ScopedSaveState state (g);
+            g.addTransform (juce::AffineTransform::rotation (juce::MathConstants<float>::halfPi, legend.getCentreX(), legend.getCentreY()));
+            g.setColour (colours::screenDim);
+            g.setFont (labelFont (8.0f));
+            g.drawText ("L/R", juce::Rectangle<float> (40.0f, legend.getWidth()).withCentre (legend.getCentre()), juce::Justification::centred);
+        }
+        inner.removeFromRight (2.0f);
+    }
+
+    const float gap = 2.0f;
     const float barW = (inner.getWidth() - gap * (float) (numChannels - 1)) / (float) numChannels;
-    constexpr float segH = 2.0f, segGap = 1.0f;
+    constexpr float segGap = 1.5f;
+    const float segH = inner.getHeight() > 120.0f ? 3.0f : 2.0f;
     const int n = juce::jmax (1, (int) ((inner.getHeight() + segGap) / (segH + segGap)));
 
     for (int c = 0; c < numChannels; ++c)
@@ -215,8 +234,8 @@ void LevelMeter::paint (juce::Graphics& g)
         for (int i = 0; i < n; ++i)
         {
             const float segNorm = (float) (i + 1) / (float) n;
-            const auto colour = segNorm > 0.95f ? colours::danger : (segNorm > 0.82f ? colours::accent : colours::ink);
-            g.setColour (i < lit ? colour : colours::line);
+            const auto colour = segNorm > 0.95f ? colours::danger : (segNorm > 0.8f ? colours::accent : colours::screenText);
+            g.setColour (i < lit ? colour : colours::screenGhost);
             g.fillRect (x, inner.getBottom() - (float) (i + 1) * (segH + segGap) + segGap, barW, segH);
         }
     }

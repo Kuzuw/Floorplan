@@ -184,8 +184,8 @@ void HeaderComponent::paint (juce::Graphics& g)
     }
     logo.removeFromLeft (10);
     auto text = logo.withSizeKeepingCentre (logo.getWidth(), 36);
-    g.setColour (colours::ink);
-    g.setFont (font (21.0f, true).withExtraKerningFactor (-0.01f));
+    g.setColour (colours::text);
+    g.setFont (headlineFont (23.0f, true).withExtraKerningFactor (-0.01f));
     g.drawText ("FLOORPLAN", text.removeFromTop (22), juce::Justification::bottomLeft);
     g.setColour (colours::grey);
     g.setFont (labelFont (9.5f));
@@ -241,7 +241,7 @@ void HeaderComponent::paint (juce::Graphics& g)
     g.setColour (colours::grey);
     g.setFont (labelFont (9.5f));
     g.drawText ("CPU", cpu.removeFromTop (cpu.getHeight() / 2), juce::Justification::bottomRight);
-    g.setColour (shownCpu > 70 ? colours::danger : colours::ink);
+    g.setColour (shownCpu > 70 ? colours::danger : colours::text);
     g.setFont (monoFont (13.0f, true));
     g.drawText (juce::String (juce::jmax (0, shownCpu)) + "%", cpu, juce::Justification::topRight);
 }

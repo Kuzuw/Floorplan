@@ -187,19 +187,17 @@ void InstrumentComponent::Row::refresh()
 
 void InstrumentComponent::Row::paint (juce::Graphics& g)
 {
-    // A module: outlined when idle, filled with ink when selected.
+    // A module: a flat Neutral row when idle, Inverted (charcoal) when selected.
     const auto r = getLocalBounds().toFloat().reduced (0.75f, 2.0f);
     const bool selected = owner.state.voice == voice;
-    g.setColour (selected ? colours::ink : (isMouseOver() ? colours::hover : colours::paper));
-    g.fillRoundedRectangle (r, 5.0f);
-    g.setColour (selected ? colours::ink : colours::line);
-    g.drawRoundedRectangle (r, 5.0f, 1.0f);
+    g.setColour (selected ? colours::ink : (isMouseOver() ? colours::hover : colours::neutral));
+    g.fillRoundedRectangle (r, 2.0f);
 
     drawBadge (g, badgeArea(), voice);
 
     const auto& spec = kVoiceSpecs[(size_t) voice];
     auto text = getLocalBounds().withLeft ((int) badgeArea().getRight() + 8).withRight (muteButton.getX() - 14);
-    const auto nameColour = selected ? colours::paper : colours::ink;
+    const auto nameColour = selected ? colours::paper : colours::text;
     g.setColour (shownMuted ? (selected ? colours::grey : colours::greyLight) : nameColour);
     g.setFont (font (11.5f, true).withExtraKerningFactor (0.04f));
     g.drawFittedText (juce::String (spec.name).toUpperCase(), text, juce::Justification::centredLeft, 1, 0.8f);

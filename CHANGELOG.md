@@ -48,6 +48,12 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- New visual design language across the whole interface:
+  - **Palette:** Primary orange `#FF5E00` (deep `#A33A00` for selections), Secondary charcoal `#403D39`, Tertiary grey `#8A857C` and Neutral cream `#EBE7DF`.
+  - **Type:** Space Grotesk for headlines and the wordmark, Geist for text and labels. Both are embedded, under the SIL Open Font License.
+  - **Shapes:** borderless rounded cards, near-square buttons in Outlined, Inverted, Primary and orange action styles, and flat Neutral step pads and track rows.
+  - **Meters:** segmented LED meters on dark windows, with an L/R legend on the master meter.
+  - Instrument badges use the palette: orange for the tonal voices, deep orange for snare and clap, and grey for the metals.
 - The eight extra outputs are now active by default, so hosts that only offer default-active outputs list them. They stay silent until a voice is routed to them, and the main mix is unchanged.
 - Output choices are named after their voice: *Out 2 (Kick)* … *Out 9 (Cymbal)*.
 - Pressing play in the host ends a preview started with Floorplan's PLAY button. Before, the preview kept running underneath and resumed when the host stopped.

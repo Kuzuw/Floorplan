@@ -36,7 +36,7 @@ void MixerComponent::Strip::resized()
     r.removeFromBottom (4);
     pan.setBounds (r.removeFromTop (46));
     r.removeFromTop (4);
-    meter.setBounds (r.removeFromRight (4).reduced (0, 5));
+    meter.setBounds (r.removeFromRight (7).reduced (0, 5));
     fader.setBounds (r);
 }
 
@@ -165,8 +165,8 @@ void MixerComponent::resized()
     knobs.removeFromTop (8);
     compKnob.setBounds (knobs.removeFromTop (88));
     master.removeFromLeft (8);
-    masterMeter.setBounds (master.removeFromRight (12).reduced (0, 5));
-    master.removeFromRight (4);
+    masterMeter.setBounds (master.removeFromRight (30).reduced (0, 5));
+    master.removeFromRight (2);
     masterFader.setBounds (master);
 }
 

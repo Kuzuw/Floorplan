@@ -355,10 +355,10 @@ void SoundDesignComponent::paintEnvelope (juce::Graphics& g)
         if (t > 0.0f)
             g.fillRect (xAt (t), plot.getY(), 1.0f, plot.getHeight());
 
-    // Amplitude curves: orange, then paper white; pitch: blue, drawn first.
+    // Amplitude curves: orange, then paper white; pitch: light orange, drawn first.
     auto colourOf = [] (const EnvelopeCurves::Curve& c, int ampIndex)
     {
-        return c.pitch ? colours::familyMetal : ampIndex == 0 ? colours::accent : colours::screenText;
+        return c.pitch ? colours::accentSoft : ampIndex == 0 ? colours::accent : colours::screenText;
     };
 
     g.setFont (monoFont (9.5f, true));

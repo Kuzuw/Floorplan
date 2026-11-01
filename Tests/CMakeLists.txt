@@ -78,6 +78,7 @@ if(TARGET Floorplan)
         JucePlugin_Name="Floorplan")
     target_link_libraries(floorplan_plugin_tests PRIVATE
         floorplan_core
+        floorplan_fonts
         juce::juce_audio_utils
         juce::juce_audio_formats
         juce::juce_recommended_config_flags

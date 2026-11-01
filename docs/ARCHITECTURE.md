@@ -140,6 +140,14 @@ position, trigger counters) and repaints only what changed. UI components never
 call into the audio thread. They write parameters through the APVTS, edit
 patterns through `PatternStore`, and queue auditions through a FIFO.
 
+The look lives in `LookAndFeel.h/.cpp`. The `colours` namespace holds the
+palette tokens: Primary orange, Secondary charcoal, Tertiary grey, Neutral
+cream and their shades. `font()`, `monoFont()`, `labelFont()` and
+`headlineFont()` return the embedded Geist and Space Grotesk faces (binary data
+target `floorplan_fonts`). `KeyStyle` picks one of the button styles: Outlined,
+Inverted, the bright orange action, or Primary. Components draw with these
+helpers instead of hard-coded colours or fonts.
+
 ## Threading and ownership
 
 | Data | Owner / writer | Reader(s) | Mechanism |

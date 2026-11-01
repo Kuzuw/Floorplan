@@ -187,12 +187,13 @@ public:
             return;
         }
 
-        // A step cell: an outlined pad. When set, it fills from the bottom by
-        // its velocity, in ink, or orange when accented. A held cell darkens.
+        // A step cell: a flat Neutral pad. When set, it fills from the bottom
+        // by its velocity, in charcoal, or orange when accented, and gets a
+        // charcoal frame. A held cell darkens.
         const auto& st = pat.tracks[(size_t) v].steps[(size_t) s];
         const bool pressed = v == pressedVoice && s == pressedStep;
-        constexpr float corner = 3.0f;
-        g.setColour (pressed ? colours::greyLight : colours::paper);
+        constexpr float corner = 2.0f;
+        g.setColour (pressed ? colours::greyLight : colours::neutral);
         g.fillRoundedRectangle (bounds, corner);
 
         float fillTop = bounds.getBottom();
@@ -207,8 +208,8 @@ public:
             g.setColour (st.accent() ? colours::accent : colours::ink);
             g.fillRect (bounds.withTop (fillTop));
         }
-        g.setColour (colours::ink);
-        g.drawRoundedRectangle (bounds, corner, 1.5f);
+        g.setColour (st.on ? colours::ink : colours::line);
+        g.drawRoundedRectangle (bounds.reduced (0.5f), corner, 1.0f);
 
         if (st.on)
         {

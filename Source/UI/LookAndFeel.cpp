@@ -1,14 +1,20 @@
 #include "UI/LookAndFeel.h"
 #include "Parameters/ParameterSpecs.h"
 
+#include <FloorplanFonts.h>
+
 namespace fp::ui
 {
 
 namespace
 {
-constexpr float kOutline = 1.5f; // stroke width of control outlines at design size
+constexpr float kOutline = 1.5f;      // stroke width of knob and fader outlines at design size
+constexpr float kButtonCorner = 2.0f; // buttons and fields are nearly square
+constexpr float kCardCorner = 12.0f;
 
-bool isLight (juce::Colour c) { return c.getPerceivedBrightness() > 0.6f; }
+// Dark text on bright orange (as on the design's Label button), light text on
+// deep orange, charcoal and grey.
+bool isLight (juce::Colour c) { return c.getPerceivedBrightness() > 0.55f; }
 
 juce::Colour capColour (const juce::Component& c, juce::Colour fallback)
 {
@@ -22,6 +28,19 @@ KeyStyle keyStyleOf (const juce::Component& c)
     return v.isVoid() ? KeyStyle::light : (KeyStyle) (int) v;
 }
 } // namespace
+
+juce::Typeface::Ptr typeface (Face face)
+{
+    // Loaded once, on first use (message thread).
+    static const std::array<juce::Typeface::Ptr, 5> faces {
+        juce::Typeface::createSystemTypefaceFor (FloorplanFonts::GeistRegular_ttf, FloorplanFonts::GeistRegular_ttfSize),
+        juce::Typeface::createSystemTypefaceFor (FloorplanFonts::GeistMedium_ttf, FloorplanFonts::GeistMedium_ttfSize),
+        juce::Typeface::createSystemTypefaceFor (FloorplanFonts::GeistSemiBold_ttf, FloorplanFonts::GeistSemiBold_ttfSize),
+        juce::Typeface::createSystemTypefaceFor (FloorplanFonts::SpaceGroteskMedium_ttf, FloorplanFonts::SpaceGroteskMedium_ttfSize),
+        juce::Typeface::createSystemTypefaceFor (FloorplanFonts::SpaceGroteskBold_ttf, FloorplanFonts::SpaceGroteskBold_ttfSize),
+    };
+    return faces[(size_t) face];
+}
 
 juce::Colour familyColour (int voice)
 {
@@ -42,30 +61,20 @@ juce::Colour familyColour (int voice)
 juce::Rectangle<int> drawSectionTitle (juce::Graphics& g, juce::Rectangle<int> area, const juce::String& title,
                                        const juce::String& subtitle)
 {
+    // As on the design's cards: a quiet title, no rule.
     auto header = area.removeFromTop (18);
-    const auto titleFont = labelFont (12.0f);
-    const auto upper = title.toUpperCase();
-    int x = header.getX();
+    const auto titleFont = headlineFont (15.0f);
 
-    g.setColour (colours::ink);
+    g.setColour (colours::text);
     g.setFont (titleFont);
-    g.drawText (upper, header, juce::Justification::centredLeft);
-    x += juce::GlyphArrangement::getStringWidthInt (titleFont, upper) + 8;
+    g.drawText (title, header, juce::Justification::centredLeft);
 
     if (subtitle.isNotEmpty())
     {
-        const auto subFont = labelFont (10.5f);
-        const auto sub = subtitle.toUpperCase();
+        const int x = header.getX() + juce::GlyphArrangement::getStringWidthInt (titleFont, title) + 10;
         g.setColour (colours::grey);
-        g.setFont (subFont);
-        g.drawText (sub, header.withLeft (x), juce::Justification::centredLeft);
-        x += juce::GlyphArrangement::getStringWidthInt (subFont, sub) + 8;
-    }
-
-    if (x < header.getRight())
-    {
-        g.setColour (colours::line);
-        g.fillRect ((float) x, (float) header.getCentreY(), (float) (header.getRight() - x), 1.0f);
+        g.setFont (font (12.5f));
+        g.drawText (subtitle, header.withLeft (x), juce::Justification::centredLeft);
     }
 
     area.removeFromTop (6);
@@ -74,11 +83,8 @@ juce::Rectangle<int> drawSectionTitle (juce::Graphics& g, juce::Rectangle<int> a
 
 juce::Rectangle<int> drawPanel (juce::Graphics& g, juce::Rectangle<int> area, const juce::String& title)
 {
-    const auto r = area.toFloat().reduced (0.5f);
     g.setColour (colours::panel);
-    g.fillRoundedRectangle (r, 6.0f);
-    g.setColour (colours::line);
-    g.drawRoundedRectangle (r, 6.0f, 1.0f);
+    g.fillRoundedRectangle (area.toFloat(), kCardCorner);
 
     auto content = area.reduced (12, 10);
     if (title.isNotEmpty())
@@ -89,7 +95,7 @@ juce::Rectangle<int> drawPanel (juce::Graphics& g, juce::Rectangle<int> area, co
 juce::Rectangle<float> drawScreen (juce::Graphics& g, juce::Rectangle<float> area)
 {
     g.setColour (colours::screen);
-    g.fillRoundedRectangle (area, 4.0f);
+    g.fillRoundedRectangle (area, 3.0f);
     return area.reduced (3.0f);
 }
 
@@ -177,9 +183,10 @@ void drawLed (juce::Graphics& g, juce::Point<float> centre, float radius, juce::
 
 void drawBadge (juce::Graphics& g, juce::Rectangle<float> area, int voice)
 {
-    g.setColour (familyColour (voice));
-    g.fillRoundedRectangle (area, 3.0f);
-    g.setColour (colours::ink);
+    const auto fill = familyColour (voice);
+    g.setColour (fill);
+    g.fillRoundedRectangle (area, kButtonCorner);
+    g.setColour (isLight (fill) ? colours::text : colours::paper);
     g.setFont (font (juce::jmin (12.0f, area.getHeight() * 0.48f), true));
     g.drawText (kVoiceSpecs[(size_t) voice].shortName, area, juce::Justification::centred);
 }
@@ -197,38 +204,45 @@ FloorplanLookAndFeel::FloorplanLookAndFeel()
 {
     using namespace colours;
     setColour (juce::ResizableWindow::backgroundColourId, background);
-    setColour (juce::TextButton::buttonColourId, paper);
+    setColour (juce::TextButton::buttonColourId, panel);
     setColour (juce::TextButton::buttonOnColourId, ink);
-    setColour (juce::TextButton::textColourOffId, ink);
-    setColour (juce::TextButton::textColourOnId, paper);
     setColour (juce::ComboBox::backgroundColourId, paper);
-    setColour (juce::ComboBox::outlineColourId, ink);
-    setColour (juce::ComboBox::textColourId, ink);
-    setColour (juce::ComboBox::arrowColourId, ink);
-    setColour (juce::PopupMenu::backgroundColourId, paper);
-    setColour (juce::PopupMenu::textColourId, ink);
-    setColour (juce::PopupMenu::highlightedBackgroundColourId, accent);
+    setColour (juce::ComboBox::outlineColourId, outline);
+    setColour (juce::ComboBox::textColourId, text);
+    setColour (juce::ComboBox::arrowColourId, label);
+    setColour (juce::PopupMenu::backgroundColourId, panel);
+    setColour (juce::PopupMenu::textColourId, text);
+    setColour (juce::PopupMenu::highlightedBackgroundColourId, accentDeep);
     setColour (juce::PopupMenu::highlightedTextColourId, paper);
     setColour (juce::PopupMenu::headerTextColourId, grey);
-    setColour (juce::Label::textColourId, ink);
-    setColour (juce::Slider::textBoxTextColourId, ink);
+    setColour (juce::Label::textColourId, text);
+    setColour (juce::Slider::textBoxTextColourId, text);
     setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    setColour (juce::TooltipWindow::backgroundColourId, paper);
-    setColour (juce::TooltipWindow::textColourId, ink);
+    setColour (juce::TooltipWindow::backgroundColourId, ink);
+    setColour (juce::TooltipWindow::textColourId, paper);
     setColour (juce::TooltipWindow::outlineColourId, ink);
     setColour (juce::AlertWindow::backgroundColourId, panel);
-    setColour (juce::AlertWindow::textColourId, ink);
-    setColour (juce::AlertWindow::outlineColourId, ink);
+    setColour (juce::AlertWindow::textColourId, text);
+    setColour (juce::AlertWindow::outlineColourId, line);
     setColour (juce::TextEditor::backgroundColourId, paper);
-    setColour (juce::TextEditor::textColourId, ink);
-    setColour (juce::TextEditor::outlineColourId, ink);
+    setColour (juce::TextEditor::textColourId, text);
+    setColour (juce::TextEditor::outlineColourId, outline);
     setColour (juce::TextEditor::focusedOutlineColourId, accent);
     setColour (juce::TextEditor::highlightColourId, accent.withAlpha (0.3f));
     setColour (juce::CaretComponent::caretColourId, accent);
-    setColour (juce::ToggleButton::textColourId, ink);
-    setColour (juce::ToggleButton::tickColourId, accent);
+    setColour (juce::ToggleButton::textColourId, text);
+    setColour (juce::ToggleButton::tickColourId, accentDeep);
     setColour (juce::ToggleButton::tickDisabledColourId, greyLight);
     setColour (juce::ScrollBar::thumbColourId, greyLight);
+}
+
+juce::Typeface::Ptr FloorplanLookAndFeel::getTypefaceForFont (const juce::Font& f)
+{
+    // Any text drawn with the default font (popup menus, alerts, editors)
+    // uses Geist too.
+    if (f.getTypefaceName() == juce::Font::getDefaultSansSerifFontName())
+        return typeface (f.isBold() ? Face::bodySemiBold : Face::body);
+    return LookAndFeel_V4::getTypefaceForFont (f);
 }
 
 void FloorplanLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h, float pos,
@@ -310,7 +324,7 @@ void FloorplanLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, in
     const auto track = juce::Rectangle<float> (r.getWidth() - 10.0f, 3.0f).withCentre (r.getCentre());
     g.setColour (colours::line);
     g.fillRoundedRectangle (track, 1.5f);
-    g.setColour (enabled ? colours::accent : colours::greyLight);
+    g.setColour (enabled ? colours::accentDeep : colours::greyLight);
     g.fillRoundedRectangle (track.withRight (juce::jmax (track.getX(), pos)), 1.5f);
     g.setColour (ink);
     g.fillRoundedRectangle (juce::Rectangle<float> (8.0f, juce::jmin (r.getHeight(), 16.0f)).withCentre ({ pos, r.getCentreY() }), 2.0f);
@@ -324,31 +338,35 @@ juce::Colour FloorplanLookAndFeel::faceColour (juce::Button& b, bool over, bool 
     else
         switch (keyStyleOf (b))
         {
-            case KeyStyle::dark:   face = over ? colours::inkSoft : colours::ink; break;
-            case KeyStyle::orange: face = over ? colours::accent.brighter (0.1f) : colours::accent; break;
+            case KeyStyle::dark:    face = over ? colours::inkSoft : colours::ink; break;
+            case KeyStyle::orange:  face = over ? colours::accent.brighter (0.15f) : colours::accent; break;
+            case KeyStyle::primary: face = over ? colours::accentDeep.brighter (0.15f) : colours::accentDeep; break;
             case KeyStyle::light:
-            default:               face = down ? colours::greyLight : (over ? colours::hover : colours::paper); break;
+            default:                face = down ? colours::line : (over ? colours::neutral : colours::panel); break;
         }
     if (down && b.getToggleState())
         face = face.interpolatedWith (colours::greyLight, 0.3f);
-    return b.isEnabled() ? face : colours::panel;
+    return b.isEnabled() ? face : colours::neutral;
 }
 
 void FloorplanLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour&, bool over, bool down)
 {
-    const auto r = b.getLocalBounds().toFloat().reduced (kOutline * 0.5f);
-    const float corner = juce::jmin (4.0f, r.getHeight() * 0.25f);
+    // Filled styles are flat; only the Outlined (light, off) style draws a frame.
+    const auto r = b.getLocalBounds().toFloat();
     g.setColour (faceColour (b, over && b.isEnabled(), down));
-    g.fillRoundedRectangle (r, corner);
-    g.setColour (b.isEnabled() ? colours::ink : colours::greyLight);
-    g.drawRoundedRectangle (r, corner, kOutline);
+    g.fillRoundedRectangle (r, kButtonCorner);
+    if (keyStyleOf (b) == KeyStyle::light && ! b.getToggleState())
+    {
+        g.setColour (b.isEnabled() ? colours::outline : colours::line);
+        g.drawRoundedRectangle (r.reduced (0.75f), kButtonCorner, 1.5f);
+    }
 }
 
 void FloorplanLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b, bool over, bool down)
 {
     const auto face = faceColour (b, over, down);
     const auto id = b.getToggleState() ? juce::TextButton::textColourOnId : juce::TextButton::textColourOffId;
-    auto colour = b.isColourSpecified (id) ? b.findColour (id) : (isLight (face) ? colours::ink : colours::paper);
+    auto colour = b.isColourSpecified (id) ? b.findColour (id) : (isLight (face) ? colours::text : colours::paper);
     if (! b.isEnabled())
         colour = colours::greyLight;
 
@@ -359,19 +377,25 @@ void FloorplanLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& 
 
 void FloorplanLookAndFeel::drawComboBox (juce::Graphics& g, int w, int h, bool, int, int, int, int, juce::ComboBox& box)
 {
-    const auto r = juce::Rectangle<int> (0, 0, w, h).toFloat().reduced (kOutline * 0.5f);
+    // A field like the design's search box: neutral fill, thin warm outline.
+    const auto r = juce::Rectangle<int> (0, 0, w, h).toFloat().reduced (0.5f);
     const bool enabled = box.isEnabled();
-    g.setColour (box.isMouseOver (true) && enabled ? colours::hover : colours::paper);
-    g.fillRoundedRectangle (r, 4.0f);
-    g.setColour (enabled ? colours::ink : colours::greyLight);
-    g.drawRoundedRectangle (r, 4.0f, kOutline);
+    const bool over = box.isMouseOver (true) && enabled;
+    g.setColour (over ? colours::hover : colours::neutral);
+    g.fillRoundedRectangle (r, kButtonCorner);
+    g.setColour (enabled ? (over ? colours::accentText.withAlpha (0.6f) : colours::outline) : colours::line);
+    g.drawRoundedRectangle (r, kButtonCorner, 1.0f);
     if (w < 44)
         return; // compact boxes (e.g. chain slots) show only their value
 
-    const float ax = r.getRight() - 9.0f, ay = r.getCentreY();
+    // Chevron.
+    const float ax = r.getRight() - 10.0f, ay = r.getCentreY();
     juce::Path arrow;
-    arrow.addTriangle (ax - 3.5f, ay - 1.5f, ax + 3.5f, ay - 1.5f, ax, ay + 2.5f);
-    g.fillPath (arrow);
+    arrow.startNewSubPath (ax - 3.5f, ay - 1.75f);
+    arrow.lineTo (ax, ay + 1.75f);
+    arrow.lineTo (ax + 3.5f, ay - 1.75f);
+    g.setColour (enabled ? colours::label : colours::greyLight);
+    g.strokePath (arrow, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 }
 
 void FloorplanLookAndFeel::positionComboBoxText (juce::ComboBox& box, juce::Label& label)
@@ -385,16 +409,16 @@ void FloorplanLookAndFeel::positionComboBoxText (juce::ComboBox& box, juce::Labe
 
 void FloorplanLookAndFeel::drawPopupMenuBackground (juce::Graphics& g, int w, int h)
 {
-    g.fillAll (colours::paper);
-    g.setColour (colours::ink);
+    g.fillAll (colours::panel);
+    g.setColour (colours::line);
     g.drawRect (0, 0, w, h, 1);
 }
 
 void FloorplanLookAndFeel::drawTooltip (juce::Graphics& g, const juce::String& text, int w, int h)
 {
-    g.fillAll (colours::paper);
-    g.setColour (colours::ink);
-    g.drawRect (0, 0, w, h, 1);
+    // Inverted: charcoal with light text.
+    g.fillAll (colours::ink);
+    g.setColour (colours::paper);
     g.setFont (font (13.0f));
     g.drawFittedText (text, 6, 2, w - 12, h - 4, juce::Justification::centredLeft, 3);
 }
@@ -403,7 +427,7 @@ void FloorplanLookAndFeel::drawCallOutBoxBackground (juce::CallOutBox&, juce::Gr
 {
     g.setColour (colours::panel);
     g.fillPath (path);
-    g.setColour (colours::ink);
+    g.setColour (colours::line);
     g.strokePath (path, juce::PathStrokeType (1.0f));
 }
 

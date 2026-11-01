@@ -97,12 +97,25 @@ set(FLOORPLAN_JUCE_DEFINITIONS
     FLOORPLAN_VERSION_STRING="${PROJECT_VERSION}"
     CACHE INTERNAL "")
 
+# Embedded UI fonts (SIL Open Font License, see Resources/fonts/OFL-*.txt).
+juce_add_binary_data(floorplan_fonts
+    HEADER_NAME FloorplanFonts.h
+    NAMESPACE FloorplanFonts
+    SOURCES
+        Resources/fonts/Geist-Regular.ttf
+        Resources/fonts/Geist-Medium.ttf
+        Resources/fonts/Geist-SemiBold.ttf
+        Resources/fonts/SpaceGrotesk-Medium.ttf
+        Resources/fonts/SpaceGrotesk-Bold.ttf)
+set_target_properties(floorplan_fonts PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 target_sources(Floorplan PRIVATE ${FLOORPLAN_PLUGIN_SOURCES})
 target_compile_definitions(Floorplan PUBLIC ${FLOORPLAN_JUCE_DEFINITIONS})
 
 target_link_libraries(Floorplan
     PRIVATE
         floorplan_core
+        floorplan_fonts
         juce::juce_audio_utils
         juce::juce_audio_formats
     PUBLIC

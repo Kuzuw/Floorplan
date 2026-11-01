@@ -55,6 +55,20 @@ first. The ASIO and AAX SDKs in particular carry proprietary or GPLv3-only terms
 
 This software is based in part on the work of the Independent JPEG Group.
 
+## Fonts
+
+Two typefaces are embedded in the plugin for its user interface. They are
+kept in `Resources/fonts/` as downloaded from Google Fonts and are not modified.
+
+| Font | Files | Copyright | License |
+| --- | --- | --- | --- |
+| Geist | `Geist-Regular.ttf`, `Geist-Medium.ttf`, `Geist-SemiBold.ttf` | 2024 The Geist Project Authors (https://github.com/vercel/geist-font) | SIL Open Font License 1.1, `Resources/fonts/OFL-Geist.txt` |
+| Space Grotesk | `SpaceGrotesk-Medium.ttf`, `SpaceGrotesk-Bold.ttf` | 2020 The Space Grotesk Project Authors (https://github.com/floriankarsten/space-grotesk) | SIL Open Font License 1.1, `Resources/fonts/OFL-SpaceGrotesk.txt` |
+
+The OFL allows the fonts to be bundled and embedded in software under any
+license, as long as the fonts are not sold on their own and their license
+travels with them.
+
 ## Trademarks
 
 VST is a registered trademark of Steinberg Media Technologies GmbH. The VST3
