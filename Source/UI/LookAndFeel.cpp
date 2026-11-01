@@ -14,7 +14,7 @@ constexpr float kCardCorner = 12.0f;
 
 // Dark text on bright orange (as on the design's Label button), light text on
 // deep orange, charcoal and grey.
-bool isLight (juce::Colour c) { return c.getPerceivedBrightness() > 0.55f; }
+bool isLight (juce::Colour c) { return c.getPerceivedBrightness() > 0.5f; }
 
 juce::Colour capColour (const juce::Component& c, juce::Colour fallback)
 {
@@ -340,7 +340,6 @@ juce::Colour FloorplanLookAndFeel::faceColour (juce::Button& b, bool over, bool 
         {
             case KeyStyle::dark:    face = over ? colours::inkSoft : colours::ink; break;
             case KeyStyle::orange:  face = over ? colours::accent.brighter (0.15f) : colours::accent; break;
-            case KeyStyle::primary: face = over ? colours::accentDeep.brighter (0.15f) : colours::accentDeep; break;
             case KeyStyle::light:
             default:                face = down ? colours::line : (over ? colours::neutral : colours::panel); break;
         }

@@ -108,7 +108,8 @@ if(TARGET Floorplan)
         automation_fast_and_slow_reaches_the_engine
         missing_sample_is_found_by_name
         any_block_size_and_sample_rate_keeps_time
-        character_and_choke_controls_change_the_sound)
+        character_and_choke_controls_change_the_sound
+        embedded_fonts_load)
 
     foreach(test_name IN LISTS FLOORPLAN_PLUGIN_TESTS)
         add_test(NAME plugin.${test_name} COMMAND floorplan_plugin_tests ${test_name})

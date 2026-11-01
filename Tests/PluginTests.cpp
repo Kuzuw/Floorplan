@@ -905,6 +905,13 @@ FP_TEST (character_and_choke_controls_change_the_sound)
     CHECK (unchoked != plain);
 }
 
+FP_TEST (embedded_fonts_load)
+{
+    // A font the platform rejects would silently fall back to a system font.
+    for (auto face : { ui::Face::body, ui::Face::bodyMedium, ui::Face::bodySemiBold, ui::Face::headline, ui::Face::headlineBold })
+        CHECK (ui::typeface (face) != nullptr);
+}
+
 // Renders the real editor offscreen to a PNG (used for docs screenshots and
 // as a smoke test that the whole UI can be constructed and painted).
 static void clickButtonNamed (juce::Component& root, const juce::String& text)

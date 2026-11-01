@@ -16,6 +16,8 @@ const juce::Identifier kAdvancedProperty { "uiAdvancedMode" };
 MainComponent::MainComponent (FloorplanProcessor& p) : proc (p)
 {
     setLookAndFeel (&lookAndFeel);
+    // Dialogs, tooltips and default-font text use the default look and feel.
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
     setWantsKeyboardFocus (true);
 
     for (auto* c : std::initializer_list<juce::Component*> { &header, &instruments, &sequencer, &sound, &groove, &mixer })
@@ -45,6 +47,9 @@ MainComponent::~MainComponent()
 {
     stopTimer();
     setLookAndFeel (nullptr);
+    // shortcut: with two editors open, closing the newer one reverts the other's dialogs to JUCE's look until it reopens.
+    if (&juce::LookAndFeel::getDefaultLookAndFeel() == &lookAndFeel)
+        juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }
 
 void MainComponent::setAdvanced (bool shouldBeAdvanced)

@@ -25,7 +25,7 @@ inline const juce::Colour grey        { 0xff8a857c }; // Tertiary: captions, ina
 inline const juce::Colour greyLight   { 0xffc8c2b8 }; // inactive marks
 inline const juce::Colour paper       { 0xfffaf8f4 }; // control faces, text on dark
 inline const juce::Colour accent      { 0xffff5e00 }; // Primary orange
-inline const juce::Colour accentDeep  { 0xffa33a00 }; // primary buttons, selection
+inline const juce::Colour accentDeep  { 0xffa33a00 }; // selections
 inline const juce::Colour accentText  { 0xffc24600 }; // orange text on light surfaces
 inline const juce::Colour accentSoft  { 0xffffb48a }; // orange tint (on dark screens)
 inline const juce::Colour danger      { 0xffc8232b }; // clipping, destructive actions
@@ -101,10 +101,10 @@ void drawLed (juce::Graphics& g, juce::Point<float> centre, float radius, juce::
 void drawBadge (juce::Graphics& g, juce::Rectangle<float> area, int voice);
 
 // Button styles, stored as the component property "key". light is the
-// Outlined button, dark the Inverted one, orange the bright Label action and
-// primary the deep orange Primary button. A toggled-on button fills with its
-// buttonOnColourId (Secondary charcoal by default).
-enum class KeyStyle { light, dark, orange, primary };
+// Outlined button, dark the Inverted one and orange the bright Label action.
+// A toggled-on button fills with its buttonOnColourId (Secondary charcoal by
+// default).
+enum class KeyStyle { light, dark, orange };
 void setKeyStyle (juce::Component& c, KeyStyle style);
 
 class FloorplanLookAndFeel final : public juce::LookAndFeel_V4
