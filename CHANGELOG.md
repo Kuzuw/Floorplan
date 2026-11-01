@@ -6,6 +6,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-01
+
 ### Added
 
 - Advanced Mode (ADVANCED in the top bar). The sound panel widens into a tabbed inspector (Source, Pitch/Env, Tone, Output) for the selected track, and the sequencer stays where it is. The mode is saved with the project and changes no sound or parameter.
@@ -41,7 +43,6 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Loading a project now sets any parameter it does not contain to its default. Before, such parameters kept whatever value they had. Projects and kits from 0.1.0 load the new kick, snare and clap parameters at defaults that sound like those voices did in 0.1.0. Tests compare each one with a copy of the 0.1.0 code.
 - New parameters are added after all existing ones, so existing parameter indices do not change.
 - Millisecond times in the voices now convert to whole samples by rounding instead of cutting off the fraction. This covers the kick's attack and hold, the clap's spread and the snare's wire delay. The result is the same on every compiler, and at most one sample away from 0.1.0.
-
 - Linux is not supported for now: CI no longer builds or tests it, and the README lists Windows and macOS only.
 - CI: failing test output now appears as annotations, which anyone can read without signing in.
 
@@ -77,5 +78,6 @@ First public release.
 - Only tune and decay can be locked per step.
 - All tracks in a pattern share one length.
 
-[Unreleased]: https://github.com/Kuzuw/Floorplan/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Kuzuw/Floorplan/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Kuzuw/Floorplan/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Kuzuw/Floorplan/releases/tag/v0.1.0
