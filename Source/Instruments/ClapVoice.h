@@ -90,7 +90,7 @@ protected:
     void onTrigger (const float* p, const TriggerInfo& t) override
     {
         using namespace ClapP;
-        const float centre = p[Tune] * dsp::semitonesToRatio (t.tuneSemis);
+        const float centre = p[Tune] * dsp::semitonesToRatio (t.tuneSemis) * t.toneScale (0.3f);
         const float q = 0.8f + p[Tone] * 0.03f;
         bpL.setup (centre, q, sampleRate);
         bpR.setup (centre, q, sampleRate);

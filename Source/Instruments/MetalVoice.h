@@ -76,7 +76,7 @@ protected:
         toneAmt  = p[Tone] * 0.01f;
         width    = p[Width] * 0.01f;
 
-        const float bright = p[Bright] * std::sqrt (tune);
+        const float bright = p[Bright] * std::sqrt (tune) * t.toneScale (0.6f);
         hpL.setup (bright, 0.7f, sampleRate);
         hpR.setup (bright, 0.7f, sampleRate);
         bpL.setup (bright * 1.2f, 1.0f + toneAmt * 5.0f, sampleRate);
@@ -89,7 +89,7 @@ protected:
         lpR.setup (p[HighCut], 0.7f, sampleRate);
         lpL.reset(); lpR.reset();
 
-        stickAmt  = p[Stick] * 0.01f * 0.8f;
+        stickAmt  = p[Stick] * 0.01f * 0.8f * t.toneScale (0.8f);
         stickEnv  = stickAmt > 0.0f ? 1.0f : 0.0f;
         stickCoef = dsp::decayCoef (0.004f, sampleRate);
         stickHp.setup (4000.0f, sampleRate);

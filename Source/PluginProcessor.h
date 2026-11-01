@@ -109,7 +109,7 @@ private:
 
     static BusesProperties makeBuses();
     void timerCallback() override;
-    void handleMidiInput (const juce::MidiBuffer& midi, int numSamples, int& count);
+    void handleMidiInput (const juce::MidiBuffer& midi, const TransportState& transport, int numSamples, int& count);
     TransportState readTransport (int numSamples);
     void writeMidiOutput (juce::MidiBuffer& midi, const TriggerEvent* seqEvents, int numSeqEvents, int numSamples);
     void pushUiMessage (const MidiUiMessage& m) noexcept;

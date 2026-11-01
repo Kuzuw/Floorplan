@@ -43,7 +43,7 @@
 - **Built for dance music.** Four-on-the-floor defaults, swing and groove templates, offbeat open hats with closed-hat choke, ratchets, flams, probability and per-step parameter locks.
 - **Tight timing.** The sequencer follows the host play head with sample-accurate events, handles tempo changes, loops and transport jumps, and never uses a wall-clock timer.
 - **Very light.** About 0.3% of one laptop core for a typical groove. Idle voices cost nothing, and the audio thread never allocates, locks or touches the disk.
-- **Production-ready plumbing.** 186 automatable parameters, versioned project state, kit presets, a documented JSON pattern format, MIDI learn and optional per-voice outputs. One standard VST3 for every host; see [using it in FL Studio and Ableton Live](docs/HOSTS.md).
+- **Production-ready plumbing.** 199 automatable parameters, versioned project state, kit presets, a documented JSON pattern format, MIDI learn and optional per-voice outputs. One standard VST3 for every host; see [using it in FL Studio and Ableton Live](docs/HOSTS.md).
 - **Hackable.** The DSP and sequencer core is plain C++17 with no JUCE dependency, so you can unit-test and benchmark it in isolation. A new voice is one table entry plus one class.
 
 ## Sounds
@@ -53,15 +53,24 @@
 | Kick | Sine body, exponential pitch sweep, hold stage, noise click | Tune, Bend, Bend Time, Decay, Click, Punch. Advanced Mode adds Attack, Shape, Sub, Click Tone and Click Length |
 | Snare | Two-mode tuned shell plus high-passed noise wires | Tune, Tone, Decay, Snappy, Body, Width. Advanced Mode adds Drop, Drop Time, Ring, Wire Tone and Wire Delay |
 | Closed Hat | Six band-limited square oscillators and noise, high-passed | Tune, Decay, Bright, Metal, Tone, Width. Advanced Mode adds Attack, Hold, Tail, Detune, High Cut and Stick |
-| Open Hat | Same metallic engine, choked by the closed hat | Same as the closed hat |
+| Open Hat | Same metallic engine, choked by the closed hat (by default) | Same as the closed hat |
 | Clap | Band-passed noise shaped by a multi-burst envelope | Tune, Decay, Spread, Bursts, Tone, Width. Advanced Mode adds Attack, Burst Length, Tail Level and Jitter |
 | Percussion | Tuned sine with pitch sweep, FM "metal" and noise transient | Tune, Bend, Bend Time, Decay, Noise, Metal. Advanced Mode adds Attack, Hold, Noise Tone, Noise Length, Metal Tune and Shape |
 | Low Tom | Same tuned engine, lower range | Same as the percussion |
 | Cymbal | Metallic engine with a different partial set and long decay | Same as the closed hat |
 
-Every voice also has **Level, Pan, Mute, Solo, a bipolar Filter** (low-pass to the left, high-pass to the right, bypassed at centre), **Drive**, **Output routing**, and sample **Tune/Decay** when a sample is loaded.
+Every voice also has **Level, Pan, Mute, Solo, a bipolar Filter** (low-pass to the left, high-pass to the right, bypassed at centre), **Drive**, **Output routing**, **Choked By** (any voice can cut off any other; by default only the closed hat chokes the open hat), and sample **Tune/Decay** when a sample is loaded.
 
 The **master section** has volume, a soft clipper (on by default as a safety stage), an optional one-knob bus compressor, and stereo meters. No processing adds latency.
+
+The optional **Character section** (mixer → CHARACTER, off by default) makes the kit play more like an instrument:
+
+- **Vel Tone:** soft hits sound darker as well as quieter.
+- **Vary:** each hit differs slightly, by at most ±0.2 semitone, ±12% decay, ±1 dB and a little tone, the same way on every playback.
+- **Color:** saturation on the main bus that adds harmonics and rounds peaks without making anything louder.
+- **Punch:** a transient shaper on the main bus, up to ±6 dB on attacks.
+
+Switched off, the output is bit-identical to having no section. See [docs/CHARACTER.md](docs/CHARACTER.md) for the design, measurements and limits.
 
 ## Sequencer
 
@@ -87,7 +96,7 @@ Measured with `floorplan_bench` (sequencer + engine, single thread, Release buil
 | Worst case: all 8 voices on every 1/32 step, ratchets, max decays, drive, filters, comp, clip | 48 kHz | 128 | 52.8 µs | 1.98% |
 | Same worst case | 96 kHz | 256 | 97.2 µs | 3.64% |
 
-Numbers vary by a few percent between runs. The engine's static state is about 2 KB, plus 3 × 64 KB for the lock-free pattern buffers. The Standalone app, including GUI and audio device, runs at about 87 MB working set. Run the benchmark on your own machine with `build/Benchmarks/Release/floorplan_bench`.
+The Character section, fully on, adds about 4 µs per 128-sample block at 48 kHz; off, it costs nothing measurable. Numbers vary by a few percent between runs. The engine's static state is about 2 KB, plus 3 × 64 KB for the lock-free pattern buffers. The Standalone app, including GUI and audio device, runs at about 87 MB working set. Run the benchmark on your own machine with `build/Benchmarks/Release/floorplan_bench`.
 
 ## Building from source
 

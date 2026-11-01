@@ -18,6 +18,13 @@ set(FLOORPLAN_CORE_TESTS
     mute_and_solo
     open_hat_is_choked_by_closed_hat
     retrigger_is_click_free
+    character_off_ignores_its_settings
+    velocity_changes_the_tone
+    variation_is_bounded_and_reproducible
+    choke_group_is_configurable
+    color_adds_harmonics_and_is_level_matched
+    punch_shapes_the_attack
+    character_is_block_size_and_rate_safe
     kick_defaults_match_the_original_kick
     kick_attack_softens_the_onset
     kick_envelope_model_matches_rendered_output
@@ -99,7 +106,8 @@ if(TARGET Floorplan)
         midi_and_sequencer_do_not_double
         automation_fast_and_slow_reaches_the_engine
         missing_sample_is_found_by_name
-        any_block_size_and_sample_rate_keeps_time)
+        any_block_size_and_sample_rate_keeps_time
+        character_and_choke_controls_change_the_sound)
 
     foreach(test_name IN LISTS FLOORPLAN_PLUGIN_TESTS)
         add_test(NAME plugin.${test_name} COMMAND floorplan_plugin_tests ${test_name})

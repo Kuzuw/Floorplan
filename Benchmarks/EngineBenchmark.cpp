@@ -23,6 +23,7 @@ struct Scenario
     int blockSize;
     bool playing;
     bool dense;
+    bool character = false; // Character section on, every part engaged
 };
 
 double runScenario (const Scenario& sc, double seconds, double& realtimeLoadPercent)
@@ -62,6 +63,16 @@ double runScenario (const Scenario& sc, double seconds, double& realtimeLoadPerc
         bank.patterns[0] = makeDefaultHousePattern();
     }
 
+    if (sc.character)
+    {
+        auto& m = engine.masterParams();
+        m.character = true;
+        m.color = 0.6f;
+        m.punch = 0.5f;
+        m.vary = 1.0f;
+        m.velTone = 0.5f;
+    }
+
     std::vector<float> L ((size_t) sc.blockSize), R ((size_t) sc.blockSize);
     TriggerEvent events[Sequencer::kMaxEventsPerBlock];
     const double bpm = 124.0;
@@ -96,6 +107,9 @@ int main (int argc, char** argv)
         { "typical house groove",     44100.0, 512, true,  false },
         { "worst case dense",         48000.0, 128, true,  true  },
         { "worst case dense",         96000.0, 256, true,  true  },
+        { "typical + character",      48000.0, 128, true,  false, true },
+        { "dense + character",        48000.0, 128, true,  true,  true },
+        { "dense + character",        96000.0, 256, true,  true,  true },
     };
 
     std::printf ("Floorplan engine benchmark (%.0f s of audio per scenario, single thread)\n\n", seconds);

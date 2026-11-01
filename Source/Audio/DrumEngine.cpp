@@ -58,7 +58,6 @@ DrumEngine::DrumEngine()
     for (int v = 0; v < kNumVoices; ++v)
     {
         synths[(size_t) v] = createSynthVoice (v);
-        chokedBy[(size_t) v] = -1;
 
         const auto& spec = kVoiceSpecs[(size_t) v];
         auto& vp = voiceSettings[(size_t) v];
@@ -68,7 +67,7 @@ DrumEngine::DrumEngine()
         vp.pan = spec.defaultPan;
     }
 
-    chokedBy[OpenHat] = ClosedHat; // classic hi-hat choke group
+    voiceSettings[OpenHat].chokedBy = ClosedHat; // classic hi-hat choke group (the parameter's default)
 }
 
 void DrumEngine::prepare (double newSampleRate, int maxBlockSize)
@@ -81,6 +80,7 @@ void DrumEngine::prepare (double newSampleRate, int maxBlockSize)
 
     for (auto& s : synths) s->prepare (sampleRate);
     for (auto& s : samplers) s.prepare (sampleRate);
+    character.prepare (sampleRate);
     compressor.prepare (sampleRate);
     reset();
 }
@@ -96,8 +96,10 @@ void DrumEngine::reset()
         st.cachedRate = 0.0;
         st.gainL.initialised = st.gainR.initialised = false;
     }
+    character.reset();
     compressor.reset();
     masterGain.initialised = false;
+    nextFreeHitId = 0;
     voicePeaks.fill (0.0f);
     peakL = peakR = 0.0f;
 }
@@ -117,6 +119,40 @@ float DrumEngine::velocityToGain (float velocity, bool accent, float accentAmoun
     return g;
 }
 
+namespace
+{
+inline uint64_t mix64 (uint64_t x) noexcept
+{
+    x ^= x >> 30; x *= 0xBF58476D1CE4E5B9ull;
+    x ^= x >> 27; x *= 0x94D049BB133111EBull;
+    x ^= x >> 31;
+    return x;
+}
+} // namespace
+
+void DrumEngine::applyCharacter (TriggerInfo& info, float velocity, int voice, uint32_t hitId, const MasterParams& m) noexcept
+{
+    if (! m.character)
+        return;
+
+    // Softer hits are duller as well as quieter, as with a struck drum.
+    float tone = 1.0f - std::clamp (m.velTone, 0.0f, 1.0f) * (1.0f - std::clamp (velocity, 0.0f, 1.0f));
+
+    const float vary = std::clamp (m.vary, 0.0f, 1.0f);
+    if (vary > 0.0f)
+    {
+        // Four independent values in [-1, 1] from one hash of (seed, hit, voice).
+        const uint64_t h = mix64 (((uint64_t) m.seed << 32) ^ hitId ^ ((uint64_t) (voice + 1) * 0x9E3779B97F4A7C15ull));
+        auto r = [h] (int i) { return (float) ((h >> (16 * i)) & 0xFFFF) * (2.0f / 65535.0f) - 1.0f; };
+        info.tuneSemis += vary * kVaryTuneSemis * r (0);
+        info.decayMul  *= 1.0f + vary * kVaryDecay * r (1);
+        info.gain      *= dsp::dbToGain (vary * kVaryLevelDb * r (2));
+        tone           += vary * kVaryTone * r (3);
+    }
+
+    info.tone = std::clamp (tone, 0.0f, 1.0f + kVaryTone);
+}
+
 void DrumEngine::renderVoice (int v, const TriggerEvent* events, int numEvents, int numSamples)
 {
     const bool useSample = samplers[(size_t) v].hasSample();
@@ -124,7 +160,7 @@ void DrumEngine::renderVoice (int v, const TriggerEvent* events, int numEvents, 
     const auto& vp = voiceSettings[(size_t) v];
     const float sampleParams[2] = { vp.sampleTune, vp.sampleDecay };
     const float* params = useSample ? sampleParams : vp.synth.data();
-    const int chokeSource = chokedBy[(size_t) v];
+    const int chokeSource = vp.chokedBy != v ? vp.chokedBy : -1;
 
     float* L = scratchL.data();
     float* R = scratchR.data();
@@ -148,6 +184,8 @@ void DrumEngine::renderVoice (int v, const TriggerEvent* events, int numEvents, 
             info.gain = velocityToGain (ev.velocity, ev.accent, master.accent);
             info.tuneSemis = (float) ev.tune;
             info.decayMul = std::exp2 ((float) ev.decay / 50.0f);
+            if (master.character)
+                applyCharacter (info, ev.velocity, v, ev.hitId != 0 ? ev.hitId : (++nextFreeHitId * 2u + 1u) * 0x2545F491u, master);
             voice.trigger (params, info);
         }
         else
@@ -239,7 +277,7 @@ void DrumEngine::process (const TriggerEvent* events, int numEvents,
 
         bool hasEvents = false;
         for (int e = 0; e < numEvents && ! hasEvents; ++e)
-            hasEvents = events[e].voice == v || (chokedBy[(size_t) v] >= 0 && events[e].voice == chokedBy[(size_t) v]);
+            hasEvents = events[e].voice == v || (vp.chokedBy >= 0 && vp.chokedBy != v && events[e].voice == vp.chokedBy);
 
         DrumVoice& current = samplers[(size_t) v].hasSample() ? static_cast<DrumVoice&> (samplers[(size_t) v])
                                                               : *synths[(size_t) v];
@@ -317,7 +355,7 @@ void DrumEngine::process (const TriggerEvent* events, int numEvents,
         voicePeaks[(size_t) v] = peak;
     }
 
-    // Master bus: volume ramp -> optional compressor -> optional soft clip.
+    // Master bus: volume ramp -> optional Character -> optional compressor -> optional soft clip.
     const float mg = dsp::dbToGain (master.volumeDb);
     const float inc = masterGain.begin (mg, numSamples);
     float g = masterGain.current;
@@ -328,6 +366,9 @@ void DrumEngine::process (const TriggerEvent* events, int numEvents,
         mainR[i] *= g;
     }
     masterGain.current = mg;
+
+    character.process (mainL, mainR, numSamples, master.character,
+                       std::clamp (master.color, 0.0f, 1.0f), std::clamp (master.punch, -1.0f, 1.0f));
 
     if (master.comp > 0.001f)
         compressor.process (mainL, mainR, numSamples, master.comp);

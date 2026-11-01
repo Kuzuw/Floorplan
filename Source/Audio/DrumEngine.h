@@ -1,5 +1,6 @@
 #pragma once
 
+#include "DSP/Character.h"
 #include "DSP/Compressor.h"
 #include "Instruments/DrumVoice.h"
 #include "Instruments/SampleVoice.h"
@@ -22,6 +23,7 @@ struct VoiceParams
     float drive = 0.0f;   // 0..1
     bool mute = false, solo = false;
     int output = 0;       // 0 = main mix, 1..8 = aux bus n
+    int chokedBy = -1;    // voice whose hits cut this one off; -1 = none
     float sampleTune = 0.0f, sampleDecay = 100.0f;
 };
 
@@ -31,6 +33,14 @@ struct MasterParams
     float clip = 0.2f;     // 0 = off
     float comp = 0.0f;     // 0 = off
     float accent = 0.5f;   // accent boost amount
+
+    // Character section. Off leaves every hit and the bus bit-identical.
+    bool character = false;
+    float color = 0.3f;    // 0..1 saturation
+    float punch = 0.0f;    // -1..1 transient shaping
+    float vary = 0.3f;     // 0..1 per-hit variation
+    float velTone = 0.5f;  // 0..1 how much softer hits are also duller
+    uint32_t seed = 1;     // variation seed (shared with probability)
 };
 
 struct TriggerEvent
@@ -41,6 +51,7 @@ struct TriggerEvent
     bool accent = false;
     int8_t tune = 0;       // semitones
     int8_t decay = 0;      // -100..100 -> x0.25..x4
+    uint32_t hitId = 0;    // identifies the hit for repeatable variation; 0 = take the next free id
 };
 
 // Lock-free single-producer/single-consumer hand-off of decoded samples.
@@ -98,6 +109,15 @@ public:
     // Per-hit gain from velocity and accent (exposed for tests).
     static float velocityToGain (float velocity, bool accent, float accentAmount) noexcept;
 
+    // Limits of the per-hit variation at Vary = 100%.
+    static constexpr float kVaryTuneSemis = 0.2f, kVaryDecay = 0.12f, kVaryLevelDb = 1.0f, kVaryTone = 0.15f;
+
+    // Applies the Character section's per-hit changes to `info`: velocity to
+    // tone, then the variation, which depends only on (seed, hitId, voice), so
+    // a hit sounds the same on every playback and every render. Does nothing
+    // when the section is off. Exposed for tests.
+    static void applyCharacter (TriggerInfo& info, float velocity, int voice, uint32_t hitId, const MasterParams& m) noexcept;
+
 private:
     struct Strip
     {
@@ -116,9 +136,10 @@ private:
     std::array<VoiceParams, kNumVoices> voiceSettings;
     std::array<Strip, kNumVoices> strips;
     std::array<float, kNumVoices> voicePeaks {};
-    std::array<int, kNumVoices> chokedBy {};
     MasterParams master;
+    dsp::CharacterStage character;
     dsp::BusCompressor compressor;
+    uint32_t nextFreeHitId = 0;
     dsp::LinearRamp masterGain;
     std::vector<float> scratchL, scratchR;
     float peakL = 0.0f, peakR = 0.0f;

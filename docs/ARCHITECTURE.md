@@ -59,12 +59,13 @@ computes its curves from the same formulas as its DSP (kick, snare, hats,
 cymbal, perc, tom) or runs its own envelope code (the clap's `ClapEnvelope`).
 
 `ParameterLayout.cpp` turns the table into an `AudioProcessorValueTreeState`
-layout of 186 parameters. The extras sit in an "Advanced" group after all the
+layout of 199 parameters. The extras sit in an "Advanced" group after all the
 original parameters, so adding them never moves an existing parameter's index.
 Within that group they are ordered by `extrasGeneration()`: each new batch of
 extras goes after the ones already released, even when it belongs to a voice
-listed earlier. Parameters added later still (*Sequencer On*) go in an
-"Options" group at the very end. `ParameterCache` resolves every parameter's raw
+listed earlier. Parameters added later still go in groups at the very end, in
+the order they were added: "Options" (*Sequencer On*), then "Character" (its
+five controls), then "Choke" (one *Choked By* per voice). `ParameterCache` resolves every parameter's raw
 `std::atomic<float>*` once at construction, so the audio thread reads plain
 atomics and never looks anything up by string.
 
@@ -73,6 +74,7 @@ atomics and never looks anything up by string.
 - `SineTable`: 2048-point wavetable with linear interpolation, shared by every voice.
 - `DSPCore.h`: `Svf` (topology-preserving transform state-variable filter, stable under fast modulation), `OnePoleHp`, `BlepSquare` (PolyBLEP anti-aliased square), xorshift `Noise`, `softClip` (rational, smooth, bounded to ±1), `LinearRamp` for click-free gain changes, and exponential `decayCoef` helpers.
 - `Compressor.h`: a feed-forward bus compressor. The envelope detector runs on every sample, and the gain computer (log/exp) runs every 16 samples, which is cheap and smooth enough for a drum bus.
+- `Character.h`: the master bus Character stage, Punch (a transient shaper comparing 5 ms and 20 ms power averages) then Color (an asymmetric soft clipper with a DC blocker, crossfaded in parallel). Its settings ramp across each block; once switched off and faded out it is skipped entirely. See [CHARACTER.md](CHARACTER.md).
 
 ### `Instruments/`: voices
 
@@ -93,15 +95,16 @@ Design rules for voices:
 - **Synthesis parameters are latched on trigger.** Every hit reads its own parameter snapshot, so automation never zips mid-hit and the voice stays branch-light. The channel strip (level, pan, filter, drive) is continuous.
 - **Click-free retrigger.** On a retrigger, the last output sample becomes a short decaying offset (`declick`), so a re-hit never jumps.
 - **Idle voices cost nothing.** `isActive()` goes false once the envelope falls below −80 dB, and the engine skips the voice and its strip entirely.
-- **Choke groups.** The closed hat chokes the open hat with a fast, smooth fade.
+- **Choke groups.** Each voice's `chokedBy` names the voice whose hits cut it off with a fast, smooth fade. By default only the closed hat chokes the open hat.
+- **Per-hit tone.** `TriggerInfo::tone` (1 = as set) scales the parts of each engine that make it bright, through `toneScale(depth)`, which is exactly 1 at tone 1. The Character section lowers it for soft hits and varies it per hit; when the section is off it stays 1 and every voice is bit-identical to before.
 
 ### `Audio/DrumEngine`
 
 `DrumEngine::process` renders one block:
 
-1. Events (already sorted by sample offset) split the block into sub-blocks; each event triggers its voice exactly at its offset.
+1. Events (already sorted by sample offset) split the block into sub-blocks; each event triggers its voice exactly at its offset. With the Character section on, `applyCharacter` first adjusts the hit's tone, tune, decay and level from its velocity and a hash of (seed, `hitId`, voice). The sequencer gives every hit an id from its absolute step, voice and repeat; the processor gives MIDI hits one from their song position, so renders repeat exactly.
 2. Each active voice renders into a scratch buffer, then goes through its strip: **drive → bipolar filter → level/pan ramps → bus**. The bus is the main mix or one of eight aux outputs. Output routing falls back to the main mix when the host has the aux bus disabled. The aux buses are active by default (so every host lists them) and stay silent until a voice's Output parameter selects one.
-3. The master chain runs: **volume ramp → compressor → soft clip**, followed by peak metering.
+3. The master chain runs: **volume ramp → Character (Punch, Color) → compressor → soft clip**, followed by peak metering. The aux buses bypass the master chain.
 
 `chokeAll()` fades out every voice (MIDI All Sound Off). After the engine, the
 processor checks the output's bit patterns for NaN or infinity: every main-bus

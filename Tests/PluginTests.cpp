@@ -1,4 +1,4 @@
-﻿// Tests for the JUCE plugin layer: processor, parameters, state and presets.
+// Tests for the JUCE plugin layer: processor, parameters, state and presets.
 
 #include "TestFramework.h"
 
@@ -772,9 +772,9 @@ FP_TEST (parameters_are_automatable)
         CHECK (std::abs (atMax - ranged->getNormalisableRange().end) < 1.0e-3f);
         ranged->setValueNotifyingHost (ranged->convertTo0to1 (before));
     }
-    int expected = 4 + 9 + kChainSlots + 1; // master, sequencer, chain slots, Sequencer On
+    int expected = 4 + 9 + kChainSlots + 1 + 5; // master, sequencer, chain slots, Sequencer On, Character
     for (int v = 0; v < kNumVoices; ++v)
-        expected += numVoiceParams (v) + 9;
+        expected += numVoiceParams (v) + 9 + 1; // + Choked By
     CHECK (count == expected);
     std::printf ("    %d automatable parameters\n", count);
 }
@@ -783,7 +783,8 @@ FP_TEST (advanced_parameters_keep_existing_indices)
 {
     // The 141 parameters of 0.1.0 keep their positions, then the 14 Advanced
     // ones of 0.1.1 (kick, snare, clap), then the hat, cymbal, perc and tom
-    // extras added after it.
+    // extras added after it, Sequencer On, the Character section and the
+    // Choked By selectors.
     auto p = makeProcessor();
     const auto& params = p->getParameters();
     auto idAt = [&] (int i) { return dynamic_cast<juce::RangedAudioParameter*> (params[i])->getParameterID(); };
@@ -796,7 +797,11 @@ FP_TEST (advanced_parameters_keep_existing_indices)
     CHECK (idAt (155) == ids::synth (ClosedHat, MetalP::Attack));
     CHECK (idAt (184) == ids::synth (Cymbal, MetalP::Stick));
     CHECK (idAt (185) == ids::sequencerOn);
-    CHECK (params.size() == 186);
+    CHECK (idAt (186) == ids::charOn);
+    CHECK (idAt (190) == ids::charVelTone);
+    CHECK (idAt (191) == ids::choke (Kick));
+    CHECK (idAt (198) == ids::choke (Cymbal));
+    CHECK (params.size() == 199);
 }
 
 FP_TEST (old_state_sets_new_parameters_to_default)
@@ -823,14 +828,81 @@ FP_TEST (old_state_sets_new_parameters_to_default)
     CHECK (std::abs (getParam (*p, ids::synth (Kick, KickP::ClickTone)) - 1800.0f) < 1.0f);
     CHECK (std::abs (getParam (*p, ids::synth (OpenHat, MetalP::HighCut)) - 20000.0f) < 1.0f);
     CHECK (std::abs (getParam (*p, ids::synth (Tom, ToneP::NoiseLength)) - 30.0f) < 0.01f);
+    // Older projects sound as they did: Character off, the open hat still
+    // choked by the closed hat, no other chokes.
+    CHECK (getParam (*p, ids::charOn) == 0.0f);
+    CHECK ((int) getParam (*p, ids::choke (OpenHat)) == ClosedHat + 1);
+    CHECK ((int) getParam (*p, ids::choke (Kick)) == 0);
 
     // And a current state round-trips them.
     setParam (*p, ids::synth (Kick, KickP::Shape), 40.0f);
+    setParam (*p, ids::charOn, 1.0f);
+    setParam (*p, ids::charPunch, -35.0f);
+    setParam (*p, ids::choke (Cymbal), (float) (Kick + 1));
     juce::MemoryBlock state;
     p->getStateInformation (state);
     auto q = makeProcessor();
     q->setStateInformation (state.getData(), (int) state.getSize());
     CHECK (std::abs (getParam (*q, ids::synth (Kick, KickP::Shape)) - 40.0f) < 0.01f);
+    CHECK (getParam (*q, ids::charOn) == 1.0f);
+    CHECK (std::abs (getParam (*q, ids::charPunch) + 35.0f) < 0.01f);
+    CHECK ((int) getParam (*q, ids::choke (Cymbal)) == Kick + 1);
+}
+
+FP_TEST (character_and_choke_controls_change_the_sound)
+{
+    // Every new control must change the output, and Character off must leave
+    // it bit-identical whatever the section's settings.
+    auto render = [] (const std::function<void (FloorplanProcessor&)>& setup)
+    {
+        auto p = makeProcessor();
+        setup (*p);
+        std::vector<float> out;
+        juce::AudioBuffer<float> buffer (p->getTotalNumOutputChannels(), kBlock);
+        for (int b = 0; b < 30; ++b)
+        {
+            juce::MidiBuffer midi;
+            if (b == 1)
+            {
+                midi.addEvent (juce::MidiMessage::noteOn (10, p->getVoiceNote (Snare), (juce::uint8) 70), 10);
+                midi.addEvent (juce::MidiMessage::noteOn (10, p->getVoiceNote (OpenHat), (juce::uint8) 90), 20);
+                midi.addEvent (juce::MidiMessage::noteOn (10, p->getVoiceNote (Kick), (juce::uint8) 110), 30);
+            }
+            if (b == 6)
+                midi.addEvent (juce::MidiMessage::noteOn (10, p->getVoiceNote (ClosedHat), (juce::uint8) 60), 0);
+            buffer.clear();
+            p->processBlock (buffer, midi);
+            out.insert (out.end(), buffer.getReadPointer (0), buffer.getReadPointer (0) + kBlock);
+        }
+        return out;
+    };
+    auto withCharacter = [] (FloorplanProcessor& p) { setParam (p, ids::charOn, 1.0f); };
+
+    const auto plain = render ([] (FloorplanProcessor&) {});
+    const auto offButSet = render ([] (FloorplanProcessor& p)
+    {
+        setParam (p, ids::charColor, 100.0f);
+        setParam (p, ids::charPunch, 80.0f);
+        setParam (p, ids::charVary, 100.0f);
+        setParam (p, ids::charVelTone, 100.0f);
+    });
+    CHECK (offButSet == plain);
+
+    const auto on = render (withCharacter);
+    CHECK (on != plain);
+    struct Change { juce::String id; float value; };
+    for (auto change : { Change { ids::charColor, 90.0f }, Change { ids::charPunch, 60.0f }, Change { ids::charPunch, -60.0f },
+                         Change { ids::charVary, 100.0f }, Change { ids::charVelTone, 0.0f }, Change { ids::seed, 2.0f } })
+    {
+        const auto changed = render ([&] (FloorplanProcessor& p) { withCharacter (p); setParam (p, change.id, change.value); });
+        if (changed == on)
+            std::printf ("    %s = %g did not change the sound\n", change.id.toRawUTF8(), (double) change.value);
+        CHECK (changed != on);
+    }
+
+    // Choked By: None lets the open hat ring past the closed hat.
+    const auto unchoked = render ([] (FloorplanProcessor& p) { setParam (p, ids::choke (OpenHat), 0.0f); });
+    CHECK (unchoked != plain);
 }
 
 // Renders the real editor offscreen to a PNG (used for docs screenshots and
@@ -909,9 +981,73 @@ static int renderIcon (const juce::File& target, int size)
     return ok ? 0 : 1;
 }
 
+// Renders four bars at 124 BPM through the processor with a host transport:
+// the default pattern plus one MIDI hit per voice at different velocities in
+// bar 2, so every voice is heard. Writes the main output as a 32-bit float
+// WAV. Extra arguments `id=value` set parameters first (real values), e.g.
+// char_on=1. Used for before/after listening and bit-exact comparisons.
+static int renderDemo (const juce::File& target, int argc, char** argv, int firstParam)
+{
+    auto p = makeProcessor();
+    for (int i = firstParam; i < argc; ++i)
+    {
+        const juce::String arg (argv[i]);
+        auto* param = p->apvts.getParameter (arg.upToFirstOccurrenceOf ("=", false, false));
+        if (param == nullptr)
+        {
+            std::printf ("Unknown parameter in %s\n", argv[i]);
+            return 1;
+        }
+        param->setValueNotifyingHost (param->convertTo0to1 (arg.fromFirstOccurrenceOf ("=", false, false).getFloatValue()));
+    }
+
+    FakePlayHead head;
+    head.bpm = 124.0;
+    p->setPlayHead (&head);
+
+    const int total = (int) (kRate * 4.0 * 4.0 * 60.0 / head.bpm);
+    const int barSamples = total / 4;
+    juce::AudioBuffer<float> out (2, total);
+    juce::AudioBuffer<float> block (p->getTotalNumOutputChannels(), kBlock);
+    for (int done = 0; done < total; done += kBlock)
+    {
+        const int n = juce::jmin (kBlock, total - done);
+        juce::AudioBuffer<float> view (block.getArrayOfWritePointers(), block.getNumChannels(), n);
+        view.clear();
+        juce::MidiBuffer midi;
+        for (int v = 0; v < kNumVoices; ++v)
+        {
+            const int at = barSamples + v * barSamples / kNumVoices + 1000; // off the pattern's grid
+            if (at >= done && at < done + n)
+                midi.addEvent (juce::MidiMessage::noteOn (10, kVoiceSpecs[(size_t) v].defaultMidiNote,
+                                                          (juce::uint8) (30 + 13 * v)), at - done);
+        }
+        p->processBlock (view, midi);
+        out.copyFrom (0, done, view, 0, 0, n);
+        out.copyFrom (1, done, view, 1, 0, n);
+        head.ppq += n * head.bpm / (60.0 * kRate);
+    }
+    p->setPlayHead (nullptr);
+
+    target.deleteFile();
+    std::unique_ptr<juce::OutputStream> stream = std::make_unique<juce::FileOutputStream> (target);
+    auto writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions()
+                                                                      .withSampleRate (kRate)
+                                                                      .withNumChannels (2)
+                                                                      .withBitsPerSample (32)
+                                                                      .withSampleFormat (juce::AudioFormatWriterOptions::SampleFormat::floatingPoint));
+    const bool ok = writer != nullptr && writer->writeFromAudioSampleBuffer (out, 0, total);
+    writer.reset();
+    std::printf ("%s %s (%.2f s, peak %.3f)\n", ok ? "Wrote" : "FAILED to write", target.getFullPathName().toRawUTF8(),
+                 (double) total / kRate, (double) out.getMagnitude (0, total));
+    return ok ? 0 : 1;
+}
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juce;
+    if (argc > 2 && std::strcmp (argv[1], "--render") == 0)
+        return renderDemo (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]), argc, argv, 3);
     if (argc > 3 && std::strcmp (argv[1], "--icon") == 0)
         return renderIcon (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]), juce::jlimit (16, 2048, std::atoi (argv[3])));
     if (argc > 2 && std::strcmp (argv[1], "--screenshot") == 0)

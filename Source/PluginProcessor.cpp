@@ -158,8 +158,21 @@ void FloorplanProcessor::pushUiMessage (const MidiUiMessage& m) noexcept
     // If the FIFO is full the message is dropped: never block the audio thread.
 }
 
-void FloorplanProcessor::handleMidiInput (const juce::MidiBuffer& midi, int numSamples, int& count)
+void FloorplanProcessor::handleMidiInput (const juce::MidiBuffer& midi, const TransportState& transport, int numSamples, int& count)
 {
+    // While the transport runs, a note's hit id comes from its song position
+    // (in 1/3840 beat), so the Character variation of a MIDI part is the same
+    // on every playback and in an export. Otherwise the engine numbers hits.
+    const double ppqPerSample = transport.bpm / (60.0 * getSampleRate());
+    auto hitIdAt = [&] (int offset) -> uint32_t
+    {
+        if (! transport.playing)
+            return 0;
+        auto x = (uint64_t) std::llround ((transport.ppq + offset * ppqPerSample) * 3840.0) * 0x9E3779B97F4A7C15ull;
+        x ^= x >> 29;
+        return (uint32_t) (x ^ (x >> 32)) | 1u;
+    };
+
     for (const auto meta : midi)
     {
         const auto msg = meta.getMessage();
@@ -184,6 +197,7 @@ void FloorplanProcessor::handleMidiInput (const juce::MidiBuffer& midi, int numS
                 e.offset = offset;
                 e.voice = (uint8_t) v;
                 e.velocity = msg.getFloatVelocity();
+                e.hitId = hitIdAt (offset);
             }
         }
         else if (msg.isAllSoundOff())
@@ -277,7 +291,7 @@ void FloorplanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     int count = 0;
 
     // 1. Live MIDI input.
-    handleMidiInput (midi, numSamples, count);
+    handleMidiInput (midi, transport, numSamples, count);
 
     // 2. Pads clicked / keys pressed in the editor (always at block start).
     {

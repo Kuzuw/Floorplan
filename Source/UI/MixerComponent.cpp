@@ -56,7 +56,12 @@ void MixerComponent::Strip::paint (juce::Graphics& g)
 MixerComponent::MixerComponent (FloorplanProcessor& p, UiState& s)
     : proc (p), state (s),
       clipKnob (p, ids::masterClip, "Clip"),
-      compKnob (p, ids::masterComp, "Comp")
+      compKnob (p, ids::masterComp, "Comp"),
+      characterToggle (p, "ON", colours::accent),
+      colorKnob (p, ids::charColor, "Color"),
+      punchKnob (p, ids::charPunch, "Punch", true),
+      varyKnob (p, ids::charVary, "Vary"),
+      velToneKnob (p, ids::charVelTone, "Vel Tone")
 {
     for (int v = 0; v < kNumVoices; ++v)
         addAndMakeVisible (strips.add (new Strip (p, s, v)));
@@ -72,7 +77,43 @@ MixerComponent::MixerComponent (FloorplanProcessor& p, UiState& s)
     addAndMakeVisible (clipKnob);
     addAndMakeVisible (compKnob);
     addAndMakeVisible (masterMeter);
+
+    for (auto* b : { &mixerTab, &characterTab })
+    {
+        b->setRadioGroupId (5151);
+        b->setClickingTogglesState (true);
+        addAndMakeVisible (b);
+    }
+    mixerTab.setToggleState (true, juce::dontSendNotification);
+    mixerTab.onClick = [this] { showPage (false); };
+    characterTab.onClick = [this] { showPage (true); };
+
+    characterToggle.bind (ids::charOn);
+    characterToggle.setTooltip ("Character section on/off. Off is clean and bit-identical to having no section");
+    colorKnob.setTooltip ("Color: parallel asymmetric saturation, level-matched at -10 dBFS (0 = clean)");
+    punchKnob.setTooltip ("Punch: transient shaper. Right boosts attacks, left softens them (up to 6 dB)");
+    varyKnob.setTooltip ("Vary: small per-hit differences in tune, decay, level and tone. "
+                         "Reproducible: the Groove VARIATION seed picks the sequence");
+    velToneKnob.setTooltip ("Velocity Tone: how much softer hits also sound duller");
+    for (auto* c : std::initializer_list<juce::Component*> { &characterToggle, &colorKnob, &punchKnob, &varyKnob, &velToneKnob })
+        addChildComponent (c);
+
     state.addChangeListener (this);
+}
+
+bool MixerComponent::characterOn() const
+{
+    return proc.apvts.getRawParameterValue (ids::charOn)->load() > 0.5f;
+}
+
+void MixerComponent::showPage (bool character)
+{
+    characterPage = character;
+    for (auto* s : strips)
+        s->setVisible (! character);
+    for (auto* c : std::initializer_list<juce::Component*> { &characterToggle, &colorKnob, &punchKnob, &varyKnob, &velToneKnob })
+        c->setVisible (character);
+    repaint();
 }
 
 MixerComponent::~MixerComponent()
@@ -85,15 +126,35 @@ void MixerComponent::refresh()
     for (int v = 0; v < kNumVoices; ++v)
         strips[v]->meter.setLevels (proc.getVoicePeak (v));
     masterMeter.setLevels (proc.getMasterPeak (0), proc.getMasterPeak (1));
+    if (characterOn() != shownCharacterOn)
+    {
+        shownCharacterOn = ! shownCharacterOn;
+        repaint();
+    }
 }
 
 void MixerComponent::resized()
 {
     auto r = getLocalBounds().reduced (12, 10);
-    r.removeFromTop (24);
+    auto title = r.removeFromTop (24);
+    characterTab.setBounds (title.removeFromRight (92).withHeight (20));
+    title.removeFromRight (4);
+    mixerTab.setBounds (title.removeFromRight (64).withHeight (20));
 
     auto master = r.removeFromRight (120);
     r.removeFromRight (12);
+
+    // Character page: one row of knobs, then the switch beside the help text.
+    auto page = r;
+    auto knobRow = page.removeFromTop (juce::jmin (page.getHeight(), 92));
+    const int cellW = juce::jmin (84, knobRow.getWidth() / 4);
+    for (auto* k : { &colorKnob, &punchKnob, &varyKnob, &velToneKnob })
+        k->setBounds (knobRow.removeFromLeft (cellW).reduced (3, 0));
+    page.removeFromTop (12);
+    characterToggle.setBounds (page.removeFromLeft (48).withHeight (26));
+    page.removeFromLeft (12);
+    characterHelp = page;
+
     const int w = r.getWidth() / kNumVoices;
     for (auto* s : strips)
         s->setBounds (r.removeFromLeft (w).reduced (1, 0));
@@ -118,7 +179,24 @@ void MixerComponent::paint (juce::Graphics& g)
     g.fillRect (masterArea.getX() - 6, masterArea.getY() + 24, 1, masterArea.getHeight() - 24);
     g.setColour (colours::ink);
     g.setFont (labelFont (11.0f));
-    g.drawText ("MASTER", masterArea.removeFromBottom (22), juce::Justification::centred);
+    auto label = masterArea.removeFromBottom (22);
+    g.drawText ("MASTER", label, juce::Justification::centred);
+
+    // The Character section is on: a lit dot beside MASTER, visible on both pages.
+    if (characterOn())
+    {
+        g.setColour (colours::accent);
+        g.fillEllipse ((float) label.getCentreX() - 37.0f, (float) label.getCentreY() - 3.0f, 6.0f, 6.0f);
+    }
+
+    if (characterPage && ! characterHelp.isEmpty())
+    {
+        g.setColour (colours::inkSoft);
+        g.setFont (labelFont (10.5f));
+        g.drawFittedText ("Color adds harmonics and rounds peaks. Punch shapes attacks. Vary makes each hit slightly "
+                          "different, the same on every play. Vel Tone makes soft hits duller. Color and Punch: main bus only.",
+                          characterHelp, juce::Justification::topLeft, 5);
+    }
 }
 
 } // namespace fp::ui

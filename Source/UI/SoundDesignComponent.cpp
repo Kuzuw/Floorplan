@@ -45,6 +45,8 @@ SoundDesignComponent::SoundDesignComponent (FloorplanProcessor& p, UiState& s) :
     setKeyStyle (auditionButton, KeyStyle::orange);
     outputBox.setTooltip ("Output routing: Main mix or a separate stereo output (enable the outputs in your DAW)");
     addChildComponent (outputBox);
+    chokeBox.setTooltip ("Choke group: a hit on the chosen voice cuts this one off (an open hat choked by the closed hat)");
+    addChildComponent (chokeBox);
 
     state.addChangeListener (this);
     bindVoice();
@@ -86,6 +88,7 @@ void SoundDesignComponent::bindVoice()
     sampleTuneKnob.bind (ids::sampleTune (v), "Smp Tune", true);
     sampleDecayKnob.bind (ids::sampleDecay (v), "Smp Decay");
     outputBox.bind (ids::output (v));
+    chokeBox.bind (ids::choke (v));
 
     previewHash = -1.0f;
     shownSample = ! shownSample; // force layout refresh
@@ -225,7 +228,7 @@ std::vector<juce::Component*> SoundDesignComponent::visibleControls()
     {
         case TabEnvelope: return knobsFor (pageParams (ParamPage::PitchEnvelope));
         case TabTone:     return { &filterKnob, &driveKnob };
-        case TabOutput:   return { &levelKnob, &panKnob, &outputBox };
+        case TabOutput:   return { &levelKnob, &panKnob, &outputBox, &chokeBox };
         case TabSource:
         default:
             if (shownSample)
@@ -259,7 +262,7 @@ void SoundDesignComponent::resized()
 {
     for (auto* k : synthKnobs) k->setVisible (false);
     for (auto* c : std::initializer_list<juce::Component*> { &filterKnob, &driveKnob, &levelKnob, &panKnob,
-                                                              &sampleTuneKnob, &sampleDecayKnob, &outputBox })
+                                                              &sampleTuneKnob, &sampleDecayKnob, &outputBox, &chokeBox })
         c->setVisible (false);
     // The Pitch/Env page exists only for engines that expose their envelopes.
     if (tab == TabEnvelope && ! envelopeTabAvailable())
@@ -416,12 +419,12 @@ void SoundDesignComponent::paint (juce::Graphics& g)
     g.drawText ("MIDI NOTE " + juce::MidiMessage::getMidiNoteName (proc.getVoiceNote (boundVoice), true, true, 3),
                 infoArea, juce::Justification::centredLeft);
 
+    g.setColour (colours::ink);
+    g.setFont (labelFont());
     if (outputBox.isVisible())
-    {
-        g.setColour (colours::ink);
-        g.setFont (labelFont());
         g.drawText ("OUTPUT", outputBox.getBounds().withY (outputBox.getY() - 22).withHeight (15), juce::Justification::centred);
-    }
+    if (chokeBox.isVisible())
+        g.drawText ("CHOKED BY", chokeBox.getBounds().withY (chokeBox.getY() - 22).withHeight (15), juce::Justification::centred);
 
     if (dividerX > 0)
     {

@@ -6,7 +6,9 @@ namespace fp::ui
 {
 
 // Eight channel strips (pan, fader, meter) + master (volume, clip, comp, meter).
-// Mute and solo live on the instrument modules.
+// Mute and solo live on the instrument modules. A second page, CHARACTER,
+// replaces the strips with the master bus Character section; the master
+// column stays on both pages.
 class MixerComponent final : public juce::Component, private juce::ChangeListener
 {
 public:
@@ -36,6 +38,8 @@ private:
     };
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override { repaint(); for (auto* s : strips) s->repaint(); }
+    void showPage (bool character);
+    bool characterOn() const;
 
     FloorplanProcessor& proc;
     UiState& state;
@@ -44,6 +48,13 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> masterAttachment;
     Knob clipKnob, compKnob;
     LevelMeter masterMeter { 2 };
+
+    juce::TextButton mixerTab { "MIXER" }, characterTab { "CHARACTER" };
+    ParamToggle characterToggle;
+    Knob colorKnob, punchKnob, varyKnob, velToneKnob;
+    juce::Rectangle<int> characterHelp;
+    bool characterPage = false;
+    bool shownCharacterOn = false;
 };
 
 } // namespace fp::ui

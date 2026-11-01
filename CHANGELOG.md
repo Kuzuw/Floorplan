@@ -8,6 +8,24 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Character section** (mixer → CHARACTER), off by default and bit-identical when off. See [docs/CHARACTER.md](docs/CHARACTER.md). It has four controls:
+  - **Vel Tone:** soft hits are darker as well as quieter. Each synth engine maps it to its own brightness controls.
+  - **Vary:** bounded per-hit variation of tune, decay, level and tone. It is repeatable: the same song position gives the same hit, and the Groove VARIATION seed picks the variation.
+  - **Color:** asymmetric parallel saturation that never raises the level.
+  - **Punch:** an attack shaper, ±6 dB.
+- **Choked By** for every voice (Advanced Mode → OUTPUT). The default keeps the open hat choked by the closed hat; *None* or any other pairing is possible.
+- 13 new parameters, appended after Sequencer On so no existing index moves. Older projects load with the section off and the default chokes.
+- `floorplan_plugin_tests --render <wav> [id=value...]` renders a fixed demo to a 32-bit float WAV, used for level and bit-identity checks.
+- Eight tests for the Character section and choke groups:
+  - off is bit-identical;
+  - velocity changes the tone;
+  - variation is bounded and reproducible;
+  - configurable chokes;
+  - Color's harmonics and level;
+  - Punch's attack-to-body ratio;
+  - block-size and sample-rate safety;
+  - every new control changes the sound.
+- Benchmark scenarios with the Character section on.
 - App icon: the wordmark's stacked bars on a cream key. It shows on the Standalone app's window and taskbar button, its shortcuts, the macOS Dock and the Windows installer.
 - **Sequencer On** parameter (*SETTINGS → Internal sequencer on*), automatable. When it is off, the display shows `SEQ OFF` and only MIDI input and the pads play. It is the last parameter, so no existing index moves.
 - *SETTINGS → Each instrument to its own output* and *All instruments to the main output*, so multi-out routing takes one click.

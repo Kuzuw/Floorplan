@@ -38,6 +38,7 @@ private:
         std::atomic<float>* filter = nullptr;
         std::atomic<float>* drive = nullptr;
         std::atomic<float>* output = nullptr;
+        std::atomic<float>* choke = nullptr;
         std::atomic<float>* sampleTune = nullptr;
         std::atomic<float>* sampleDecay = nullptr;
     };
@@ -57,6 +58,11 @@ private:
     std::atomic<float>* seed = nullptr;
     std::atomic<float>* midiOutParam = nullptr;
     std::atomic<float>* seqOnParam = nullptr;
+    std::atomic<float>* charOn = nullptr;
+    std::atomic<float>* charColor = nullptr;
+    std::atomic<float>* charPunch = nullptr;
+    std::atomic<float>* charVary = nullptr;
+    std::atomic<float>* charVelTone = nullptr;
 };
 
 } // namespace fp

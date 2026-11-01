@@ -187,7 +187,10 @@ int Sequencer::process (const PatternBank& bank, const TransportState& transport
     }
 
     int count = 0;
-    auto emit = [&] (double t, double nominal, int voice, float velocity, const Step& st)
+    // `id` names the hit by its absolute step, voice and position within the
+    // step (ratchet repeat or flam grace note), so the Character section's
+    // variation is the same on every pass, at any block size.
+    auto emit = [&] (double t, double nominal, int voice, float velocity, const Step& st, uint32_t id)
     {
         // After a (re)start, steps that nominally precede the new position
         // belong to music that was never played: skip their late tails.
@@ -210,6 +213,7 @@ int Sequencer::process (const PatternBank& bank, const TransportState& transport
         e.accent = st.accent();
         e.tune = st.tune;
         e.decay = st.decay;
+        e.hitId = id;
     };
 
     const int64_t kLo = (int64_t) std::floor (start / stepLen) - 3;
@@ -242,17 +246,19 @@ int Sequencer::process (const PatternBank& bank, const TransportState& transport
             if (! probabilityPasses (k, v, st.probability, s.seed)) continue;
 
             const float vel = (float) st.velocity / 127.0f;
+            const uint64_t stepHash = mix64 ((uint64_t) k * 0xD1B54A32D192ED03ull ^ ((uint64_t) (v + 1) << 56));
+            auto hitId = [stepHash] (int sub) { return (uint32_t) (mix64 (stepHash + (uint64_t) sub)) | 1u; };
             for (int j = 0; j < hits; ++j)
             {
                 const double te = t + (double) j * stepLen / hits;
                 if (j == 0 && st.flam())
                 {
-                    emit (te, nominal, v, vel * 0.5f, st);
-                    emit (te + stepLen * 0.12 / hits, nominal, v, vel, st);
+                    emit (te, nominal, v, vel * 0.5f, st, hitId (8));
+                    emit (te + stepLen * 0.12 / hits, nominal, v, vel, st, hitId (0));
                 }
                 else
                 {
-                    emit (te, nominal, v, j == 0 ? vel : vel * 0.85f, st);
+                    emit (te, nominal, v, j == 0 ? vel : vel * 0.85f, st, hitId (j));
                 }
             }
         }

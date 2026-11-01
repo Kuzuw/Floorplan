@@ -17,7 +17,7 @@ GrooveComponent::GrooveComponent (FloorplanProcessor& p)
         addAndMakeVisible (k);
     accentKnob.setTooltip ("Level boost of accented steps");
     randomKnob.setTooltip ("Intensity of RAND (pattern) and Randomize sound");
-    seedKnob.setTooltip ("Probability seed: picks a different but repeatable variation");
+    seedKnob.setTooltip ("Variation seed: picks a different but repeatable variation of step probabilities and of the Character section's per-hit Vary");
 
     grooveBox.setTooltip ("Groove template (timing feel)");
     resolutionBox.setTooltip ("Step resolution");

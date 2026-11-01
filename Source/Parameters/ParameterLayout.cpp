@@ -160,12 +160,32 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     options->addChild (makeBool (ids::sequencerOn, "Sequencer On", true));
     layout.add (std::move (options));
 
+    // Character section, off by default: with it off nothing changes.
+    auto character = std::make_unique<juce::AudioProcessorParameterGroup> ("character", "Character", " | ");
+    character->addChild (makeBool (ids::charOn, "Character On", false));
+    character->addChild (makeFloat (ids::charColor, "Character Color", 0.0f, 100.0f, 30.0f, 0.0f, "%"));
+    character->addChild (makeFloat (ids::charPunch, "Character Punch", -100.0f, 100.0f, 0.0f, 0.0f, "%"));
+    character->addChild (makeFloat (ids::charVary, "Character Vary", 0.0f, 100.0f, 30.0f, 0.0f, "%"));
+    character->addChild (makeFloat (ids::charVelTone, "Character Velocity Tone", 0.0f, 100.0f, 50.0f, 0.0f, "%"));
+    layout.add (std::move (character));
+
+    // Choke groups: each voice can be cut off by one other voice. The default
+    // is the fixed hi-hat choke of earlier versions (open hat by closed hat).
+    auto choke = std::make_unique<juce::AudioProcessorParameterGroup> ("choke", "Choke", " | ");
+    juce::StringArray chokeChoices { "None" };
+    for (const auto& spec : kVoiceSpecs)
+        chokeChoices.add (spec.name);
+    for (int v = 0; v < kNumVoices; ++v)
+        choke->addChild (makeChoice (ids::choke (v), juce::String (kVoiceSpecs[(size_t) v].name) + " Choked By",
+                                     chokeChoices, v == OpenHat ? ClosedHat + 1 : 0));
+    layout.add (std::move (choke));
+
     return layout;
 }
 
 bool isKitParameter (const juce::String& id)
 {
-    if (id.startsWith ("master_") || id == ids::accent)
+    if (id.startsWith ("master_") || id.startsWith ("char_") || id == ids::accent)
         return true;
 
     for (const auto& spec : kVoiceSpecs)
@@ -189,6 +209,7 @@ ParameterCache::ParameterCache (Apvts& s)
         vp.filter      = raw (s, ids::filter (v));
         vp.drive       = raw (s, ids::drive (v));
         vp.output      = raw (s, ids::output (v));
+        vp.choke       = raw (s, ids::choke (v));
         vp.sampleTune  = raw (s, ids::sampleTune (v));
         vp.sampleDecay = raw (s, ids::sampleDecay (v));
     }
@@ -208,6 +229,11 @@ ParameterCache::ParameterCache (Apvts& s)
     seed         = raw (s, ids::seed);
     midiOutParam = raw (s, ids::midiOut);
     seqOnParam   = raw (s, ids::sequencerOn);
+    charOn       = raw (s, ids::charOn);
+    charColor    = raw (s, ids::charColor);
+    charPunch    = raw (s, ids::charPunch);
+    charVary     = raw (s, ids::charVary);
+    charVelTone  = raw (s, ids::charVelTone);
 }
 
 void ParameterCache::readEngine (DrumEngine& engine) const noexcept
@@ -225,6 +251,7 @@ void ParameterCache::readEngine (DrumEngine& engine) const noexcept
         dst.filter      = load (src.filter) * 0.01f;
         dst.drive       = load (src.drive) * 0.01f;
         dst.output      = (int) load (src.output);
+        dst.chokedBy    = (int) load (src.choke) - 1;
         dst.sampleTune  = load (src.sampleTune);
         dst.sampleDecay = load (src.sampleDecay);
     }
@@ -234,6 +261,12 @@ void ParameterCache::readEngine (DrumEngine& engine) const noexcept
     m.clip     = load (clip) * 0.01f;
     m.comp     = load (comp) * 0.01f;
     m.accent   = load (accentParam) * 0.01f;
+    m.character = load (charOn) > 0.5f;
+    m.color    = load (charColor) * 0.01f;
+    m.punch    = load (charPunch) * 0.01f;
+    m.vary     = load (charVary) * 0.01f;
+    m.velTone  = load (charVelTone) * 0.01f;
+    m.seed     = (uint32_t) load (seed);
 }
 
 void ParameterCache::readSequencer (SequencerSettings& s) const noexcept

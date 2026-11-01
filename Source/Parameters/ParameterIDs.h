@@ -23,6 +23,11 @@ inline const juce::String randAmount   { "rand_amount" };
 inline const juce::String seed         { "prob_seed" };
 inline const juce::String midiOut      { "midi_out" };
 inline const juce::String sequencerOn  { "seq_on" };
+inline const juce::String charOn       { "char_on" };
+inline const juce::String charColor    { "char_color" };
+inline const juce::String charPunch    { "char_punch" };
+inline const juce::String charVary     { "char_vary" };
+inline const juce::String charVelTone  { "char_veltone" };
 
 inline juce::String chainSlot (int slot) { return "chain_" + juce::String (slot + 1); }
 
@@ -44,6 +49,7 @@ inline juce::String solo (int v)        { return voice (v, "solo"); }
 inline juce::String filter (int v)      { return voice (v, "filter"); }
 inline juce::String drive (int v)       { return voice (v, "drive"); }
 inline juce::String output (int v)      { return voice (v, "out"); }
+inline juce::String choke (int v)       { return voice (v, "choke"); }
 inline juce::String sampleTune (int v)  { return voice (v, "stune"); }
 inline juce::String sampleDecay (int v) { return voice (v, "sdecay"); }
 

@@ -125,7 +125,7 @@ Floorplan has no special Drum Rack integration.
 
 ## Automation
 
-All 186 parameters are standard VST3 parameters with stable IDs, readable
+All 199 parameters are standard VST3 parameters with stable IDs, readable
 names (for example *Kick Tune*, *Snare Level*, *Swing*) and units. Automation
 changes the sound engine directly. The editor follows automation, and moving
 a knob records automation through the usual begin/end gesture, without

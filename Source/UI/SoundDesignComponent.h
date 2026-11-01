@@ -48,7 +48,7 @@ private:
     juce::TextButton sampleButton { "LOAD SAMPLE" }, clearSampleButton { "X" };
     juce::TextButton auditionButton { "PLAY" };
     juce::OwnedArray<juce::TextButton> tabButtons;
-    ParamCombo outputBox { proc };
+    ParamCombo outputBox { proc }, chokeBox { proc };
 
     bool advanced = false;
     int tab = TabSource;

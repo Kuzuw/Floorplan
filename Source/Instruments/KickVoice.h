@@ -46,7 +46,7 @@ protected:
     {
         using namespace KickP;
         baseFreq   = p[Tune] * dsp::semitonesToRatio (t.tuneSemis);
-        sweepDepth = dsp::semitonesToRatio (p[Bend]) - 1.0f;
+        sweepDepth = (dsp::semitonesToRatio (p[Bend]) - 1.0f) * t.toneScale (0.35f); // soft hits bend less
         sweepEnv   = 1.0f;
         sweepCoef  = dsp::timeConstantCoef (p[BendTime] * 0.001f, sampleRate);
 
@@ -68,7 +68,7 @@ protected:
         subCoef    = dsp::decayCoef (decaySeconds * 1.5f, sampleRate);
         subPhase   = 0.0f;
 
-        clickAmt   = p[Click] * 0.01f;
+        clickAmt   = p[Click] * 0.01f * t.toneScale (0.8f);
         clickEnv   = 1.0f;
         clickCoef  = dsp::decayCoef (p[ClickLength] * 0.001f, sampleRate);
         clickHp.setup (p[ClickTone], sampleRate);

@@ -336,6 +336,344 @@ FP_TEST (retrigger_is_click_free)
 }
 
 // ---------------------------------------------------------------------------
+// Character section
+// ---------------------------------------------------------------------------
+namespace
+{
+// Mean squared first difference over mean square: rises with the share of
+// high frequencies, independent of level.
+double brightness (const std::vector<float>& x, size_t from = 0, size_t to = 0)
+{
+    if (to == 0 || to > x.size()) to = x.size();
+    double diff = 0.0, energy = 1.0e-30;
+    for (size_t i = from + 1; i < to; ++i)
+    {
+        diff += (double) (x[i] - x[i - 1]) * (x[i] - x[i - 1]);
+        energy += (double) x[i] * x[i];
+    }
+    return diff / energy;
+}
+
+double rms (const std::vector<float>& x, size_t from, size_t to)
+{
+    double s = 0.0;
+    for (size_t i = from; i < to; ++i) s += (double) x[i] * x[i];
+    return std::sqrt (s / (double) std::max<size_t> (1, to - from));
+}
+
+// Amplitude of the component at `freq` (single-bin DFT).
+double toneAmplitude (const std::vector<float>& x, size_t from, size_t to, double freq, double sr)
+{
+    double re = 0.0, im = 0.0;
+    for (size_t i = from; i < to; ++i)
+    {
+        const double ph = 2.0 * 3.14159265358979 * freq * (double) i / sr;
+        re += x[i] * std::cos (ph);
+        im += x[i] * std::sin (ph);
+    }
+    return 2.0 * std::sqrt (re * re + im * im) / (double) (to - from);
+}
+
+void setCharacter (DrumEngine& e, float color, float punch, float vary, float velTone, uint32_t seed = 1)
+{
+    auto& m = e.masterParams();
+    m.character = true;
+    m.color = color; m.punch = punch; m.vary = vary; m.velTone = velTone; m.seed = seed;
+}
+
+// Every voice once (one per 2000 samples, mixed velocities, fixed hit ids),
+// after a silent first block so the Character stage has faded in.
+Render renderKit (DrumEngine& engine, double sr, int block, double seconds = 0.5)
+{
+    Render r;
+    const int total = (int) (sr * seconds);
+    r.L.assign ((size_t) total, 0.0f);
+    r.R.assign ((size_t) total, 0.0f);
+    engine.process (nullptr, 0, r.L.data(), r.R.data(), nullptr, nullptr, std::min (block, 512));
+    std::fill (r.L.begin(), r.L.end(), 0.0f);
+    std::fill (r.R.begin(), r.R.end(), 0.0f);
+
+    for (int pos = 0; pos < total; pos += block)
+    {
+        const int n = std::min (block, total - pos);
+        TriggerEvent evs[kNumVoices];
+        int count = 0;
+        for (int v = 0; v < kNumVoices; ++v)
+        {
+            const int at = 100 + v * 2000;
+            if (at >= pos && at < pos + n)
+            {
+                evs[count].voice = (uint8_t) v;
+                evs[count].offset = at - pos;
+                evs[count].velocity = 0.35f + 0.08f * (float) v;
+                evs[count].hitId = 0x1000u + (uint32_t) v * 7u;
+                ++count;
+            }
+        }
+        engine.process (evs, count, r.L.data() + pos, r.R.data() + pos, nullptr, nullptr, n);
+    }
+    return r;
+}
+} // namespace
+
+FP_TEST (character_off_ignores_its_settings)
+{
+    // Off must be bit-identical to the engine without the section, whatever
+    // the section's own settings are.
+    auto plain = makeEngine (48000.0, 256);
+    auto off = makeEngine (48000.0, 256);
+    auto& m = off.masterParams();
+    m.character = false;
+    m.color = 1.0f; m.punch = -1.0f; m.vary = 1.0f; m.velTone = 1.0f; m.seed = 99;
+    const auto a = renderKit (plain, 48000.0, 256);
+    const auto b = renderKit (off, 48000.0, 256);
+    CHECK (a.L == b.L);
+    CHECK (a.R == b.R);
+
+    // And a hit's settings are untouched when it is off.
+    TriggerInfo info;
+    DrumEngine::applyCharacter (info, 0.2f, Snare, 1234u, m);
+    CHECK (info.tone == 1.0f && info.gain == 1.0f && info.tuneSemis == 0.0f && info.decayMul == 1.0f);
+}
+
+FP_TEST (velocity_changes_the_tone)
+{
+    // With Velocity Tone, a soft hit is duller, not only quieter; without the
+    // section, velocity only scales the level.
+    for (int v : { Kick, Snare, Clap, ClosedHat, Perc })
+    {
+        auto loudOn = makeEngine (48000.0, 256), softOn = makeEngine (48000.0, 256);
+        auto loudOff = makeEngine (48000.0, 256), softOff = makeEngine (48000.0, 256);
+        for (auto* e : { &loudOn, &softOn })
+            setCharacter (*e, 0.0f, 0.0f, 0.0f, 1.0f);
+        const auto bLoudOn = brightness (renderHit (loudOn, v, 48000.0, 0.25, 256, 1.0f).L);
+        const auto bSoftOn = brightness (renderHit (softOn, v, 48000.0, 0.25, 256, 0.3f).L);
+        const auto bLoudOff = brightness (renderHit (loudOff, v, 48000.0, 0.25, 256, 1.0f).L);
+        const auto bSoftOff = brightness (renderHit (softOff, v, 48000.0, 0.25, 256, 0.3f).L);
+        if (! (bSoftOn < bLoudOn * 0.9))
+            std::printf ("    voice %d: soft/loud brightness %g\n", v, bSoftOn / bLoudOn);
+        CHECK (bSoftOn < bLoudOn * 0.9);
+        CHECK_NEAR (bSoftOff / bLoudOff, 1.0, 1.0e-3);
+    }
+
+    // Full velocity keeps the tone as set.
+    TriggerInfo info;
+    MasterParams m; m.character = true; m.vary = 0.0f; m.velTone = 1.0f;
+    DrumEngine::applyCharacter (info, 1.0f, Kick, 1u, m);
+    CHECK (info.tone == 1.0f);
+}
+
+FP_TEST (variation_is_bounded_and_reproducible)
+{
+    MasterParams m; m.character = true; m.vary = 1.0f; m.velTone = 0.0f; m.seed = 7;
+    const float maxLevel = dsp::dbToGain (DrumEngine::kVaryLevelDb) * 1.0001f;
+    float minTune = 1.0f, maxTune = -1.0f;
+    std::set<float> tunes;
+    for (uint32_t id = 1; id < 4000; id += 2)
+    {
+        TriggerInfo info;
+        DrumEngine::applyCharacter (info, 1.0f, Snare, id, m);
+        CHECK (std::abs (info.tuneSemis) <= DrumEngine::kVaryTuneSemis * 1.0001f);
+        CHECK (std::abs (info.decayMul - 1.0f) <= DrumEngine::kVaryDecay * 1.0001f);
+        CHECK (info.gain <= maxLevel && info.gain >= 1.0f / maxLevel);
+        CHECK (std::abs (info.tone - 1.0f) <= DrumEngine::kVaryTone * 1.0001f);
+        minTune = std::min (minTune, info.tuneSemis);
+        maxTune = std::max (maxTune, info.tuneSemis);
+        tunes.insert (info.tuneSemis);
+
+        TriggerInfo again;
+        DrumEngine::applyCharacter (again, 1.0f, Snare, id, m);
+        CHECK (again.tuneSemis == info.tuneSemis && again.decayMul == info.decayMul
+               && again.gain == info.gain && again.tone == info.tone);
+    }
+    // It uses the range and does not repeat one value.
+    CHECK (minTune < -0.15f && maxTune > 0.15f);
+    CHECK (tunes.size() > 1900);
+
+    // Vary scales the amount; another seed or voice gives other values.
+    TriggerInfo full, half, otherSeed, otherVoice;
+    DrumEngine::applyCharacter (full, 1.0f, Snare, 99u, m);
+    auto mHalf = m; mHalf.vary = 0.5f;
+    DrumEngine::applyCharacter (half, 1.0f, Snare, 99u, mHalf);
+    CHECK_NEAR (half.tuneSemis, full.tuneSemis * 0.5f, 1.0e-6);
+    auto mSeed = m; mSeed.seed = 8;
+    DrumEngine::applyCharacter (otherSeed, 1.0f, Snare, 99u, mSeed);
+    CHECK (otherSeed.tuneSemis != full.tuneSemis);
+    DrumEngine::applyCharacter (otherVoice, 1.0f, Clap, 99u, m);
+    CHECK (otherVoice.tuneSemis != full.tuneSemis);
+
+    // Whole renders: same seed, same audio; another seed, different audio.
+    auto a = makeEngine (48000.0, 256), b = makeEngine (48000.0, 256), c = makeEngine (48000.0, 256);
+    setCharacter (a, 0.0f, 0.0f, 1.0f, 0.0f, 3);
+    setCharacter (b, 0.0f, 0.0f, 1.0f, 0.0f, 3);
+    setCharacter (c, 0.0f, 0.0f, 1.0f, 0.0f, 4);
+    const auto ra = renderKit (a, 48000.0, 256), rb = renderKit (b, 48000.0, 256), rc = renderKit (c, 48000.0, 256);
+    CHECK (ra.L == rb.L);
+    CHECK (ra.L != rc.L);
+}
+
+FP_TEST (choke_group_is_configurable)
+{
+    // Late energy of `target` when `source` hits 100 ms after it.
+    auto lateEnergy = [] (int target, int source, int chokedBy)
+    {
+        const double sr = 48000.0;
+        auto engine = makeEngine (sr, 256);
+        engine.voiceParams (target).chokedBy = chokedBy;
+        engine.voiceParams (source).mute = true; // listen to the target only
+        std::vector<float> L (24000), R (24000);
+        TriggerEvent ev;
+        for (int pos = 0; pos < 24000; pos += 256)
+        {
+            const int n = std::min (256, 24000 - pos);
+            int count = 0;
+            if (pos == 0) { ev.voice = (uint8_t) target; ev.offset = 0; count = 1; }
+            if (pos == 4864) { ev.voice = (uint8_t) source; ev.offset = 0; count = 1; }
+            engine.process (&ev, count, L.data() + pos, R.data() + pos, nullptr, nullptr, n);
+        }
+        return rms (L, 4864 + 2400, 12000);
+    };
+
+    // The default still chokes the open hat with the closed hat; None lets it ring.
+    DrumEngine defaults;
+    CHECK (defaults.voiceParams (OpenHat).chokedBy == ClosedHat);
+    CHECK (lateEnergy (OpenHat, ClosedHat, ClosedHat) < 1.0e-4);
+    CHECK (lateEnergy (OpenHat, ClosedHat, -1) > 1.0e-3);
+
+    // Any pairing works: a cymbal cut by the kick.
+    CHECK (lateEnergy (Cymbal, Kick, -1) > 1.0e-3);
+    CHECK (lateEnergy (Cymbal, Kick, Kick) < 1.0e-4);
+    // A voice set to choke itself is ignored (retrigger already restarts it).
+    CHECK (lateEnergy (Cymbal, Kick, Cymbal) > 1.0e-3);
+}
+
+FP_TEST (color_adds_harmonics_and_is_level_matched)
+{
+    using dsp::CharacterStage;
+    // About unity gain for quiet signals, never above unity, and bounded.
+    CHECK (std::abs (CharacterStage::saturate (0.0f)) < 1.0e-6f);
+    CHECK_NEAR (CharacterStage::saturate (0.001f), 0.001f, 4.0e-5);
+    for (float x = -4.0f; x <= 4.0f; x += 0.01f)
+        CHECK (std::abs (CharacterStage::saturate (x)) <= std::abs (x) + 1.0e-6f);
+    CHECK (std::abs (CharacterStage::saturate (4.0f)) < 1.5f);
+
+    const double sr = 48000.0;
+    const int n = 48000;
+    const double f = 400.0; // whole cycles in the measured half second
+    std::vector<float> in ((size_t) n);
+    for (int i = 0; i < n; ++i) in[(size_t) i] = 0.316f * (float) std::sin (2.0 * 3.14159265358979 * f * i / sr);
+
+    auto run = [&] (float color)
+    {
+        CharacterStage stage;
+        stage.prepare (sr);
+        auto L = in, R = in;
+        for (int pos = 0; pos < n; pos += 256)
+            stage.process (L.data() + pos, R.data() + pos, std::min (256, n - pos), true, color, 0.0f);
+        return L;
+    };
+    const auto clean = run (0.0f), coloured = run (1.0f);
+    // Color 0 with the section on is transparent.
+    CHECK (clean == in);
+
+    const size_t from = 24000, to = 48000; // after the DC blocker has settled
+    const double fundamental = toneAmplitude (coloured, from, to, f, sr);
+    const double second = toneAmplitude (coloured, from, to, 2.0 * f, sr);
+    const double third = toneAmplitude (coloured, from, to, 3.0 * f, sr);
+    CHECK (second > fundamental * 0.003); // even harmonics from the asymmetry
+    CHECK (third > fundamental * 0.003);
+    CHECK (toneAmplitude (clean, from, to, 2.0 * f, sr) < fundamental * 1.0e-4);
+    // A -10 dBFS sine comes out within 1.5 dB of its level; full-scale peaks are held down.
+    const double levelDb = 20.0 * std::log10 (rms (coloured, from, to) / rms (in, from, to));
+    CHECK (levelDb < 0.0 && levelDb > -1.5);
+    CHECK (std::abs (CharacterStage::saturate (1.0f)) < 0.8f && std::abs (CharacterStage::saturate (-1.0f)) < 0.8f);
+    double dc = 0.0;
+    for (size_t i = from; i < to; ++i) dc += coloured[i];
+    CHECK (std::abs (dc / (double) (to - from)) < 1.0e-3);
+
+    // Switching off fades out over one block, then the input passes untouched.
+    CharacterStage stage;
+    stage.prepare (sr);
+    auto L = in, R = in;
+    stage.process (L.data(), R.data(), 256, true, 1.0f, 0.5f);
+    stage.process (L.data() + 256, R.data() + 256, 256, false, 1.0f, 0.5f);
+    CHECK (stage.isIdle());
+    stage.process (L.data() + 512, R.data() + 512, 256, false, 1.0f, 0.5f);
+    CHECK (std::equal (L.begin() + 512, L.begin() + 768, in.begin() + 512));
+
+    // On a drum mix Color keeps the loudness (within 1 dB) and lowers the peak.
+    auto cleanKit = makeEngine (sr, 256), colourKit = makeEngine (sr, 256);
+    cleanKit.masterParams().volumeDb = colourKit.masterParams().volumeDb = -4.0f;
+    setCharacter (cleanKit, 0.0f, 0.0f, 0.0f, 0.0f);
+    setCharacter (colourKit, 1.0f, 0.0f, 0.0f, 0.0f);
+    const auto a = renderKit (cleanKit, sr, 256), b = renderKit (colourKit, sr, 256);
+    const double kitDb = 20.0 * std::log10 (rms (b.L, 0, b.L.size()) / rms (a.L, 0, a.L.size()));
+    if (! (std::abs (kitDb) < 1.0))
+        std::printf ("    kit level change %g dB\n", kitDb);
+    CHECK (std::abs (kitDb) < 1.0);
+    CHECK (b.peak() < a.peak());
+}
+
+FP_TEST (punch_shapes_the_attack)
+{
+    // A snare hit (section off), then the Punch stage alone at -1, 0 and +1.
+    auto engine = makeEngine (48000.0, 256);
+    const auto hit = renderHit (engine, Snare, 48000.0, 0.3);
+    auto shaped = [&] (float punch)
+    {
+        dsp::CharacterStage stage;
+        stage.prepare (48000.0);
+        auto L = hit.L, R = hit.R;
+        for (int pos = 0; pos < (int) L.size(); pos += 64)
+            stage.process (L.data() + pos, R.data() + pos, std::min (64, (int) L.size() - pos), true, 0.0f, punch);
+        return L;
+    };
+    auto attackToBody = [] (const std::vector<float>& x)
+    {
+        return rms (x, 0, 240) / rms (x, 2400, 9600); // first 5 ms vs 50..200 ms
+    };
+    const double flat = attackToBody (shaped (0.0f));
+    const double plus = attackToBody (shaped (1.0f));
+    const double minus = attackToBody (shaped (-1.0f));
+    if (! (plus > flat * 1.3 && minus < flat / 1.3))
+        std::printf ("    attack/body: flat %g, +1 %g, -1 %g\n", flat, plus, minus);
+    CHECK_NEAR (flat, attackToBody (hit.L), 1.0e-9); // Punch 0 is transparent
+    CHECK (plus > flat * 1.3);
+    CHECK (minus < flat / 1.3);
+    // The change is bounded: at most 6 dB either way.
+    const auto boosted = shaped (1.0f);
+    float peakIn = 0.0f, peakOut = 0.0f;
+    for (size_t i = 0; i < hit.L.size(); ++i) { peakIn = std::max (peakIn, std::abs (hit.L[i])); peakOut = std::max (peakOut, std::abs (boosted[i])); }
+    CHECK (peakOut <= peakIn * 2.0f + 1.0e-6f);
+}
+
+FP_TEST (character_is_block_size_and_rate_safe)
+{
+    for (double sr : { 44100.0, 48000.0, 96000.0 })
+    {
+        auto reference = makeEngine (sr, 4096);
+        setCharacter (reference, 0.7f, 0.6f, 1.0f, 0.8f, 5);
+        const auto ref = renderKit (reference, sr, 512);
+        CHECK (ref.finite());
+        CHECK (ref.peak() > 0.01f);
+        for (int block : { 1, 37, 256, 4096 })
+        {
+            auto e = makeEngine (sr, 4096);
+            setCharacter (e, 0.7f, 0.6f, 1.0f, 0.8f, 5);
+            const auto r = renderKit (e, sr, block);
+            float maxDiff = 0.0f;
+            for (size_t i = 0; i < r.L.size(); ++i) maxDiff = std::max (maxDiff, std::abs (r.L[i] - ref.L[i]));
+            // The engine alone differs by ~6e-5 between block layouts (float
+            // rounding in per-block ramps); the section must not add more than
+            // a few times that.
+            if (! (maxDiff < 3.0e-4f))
+                std::printf ("    %g Hz, block %d: max difference %g\n", sr, block, (double) maxDiff);
+            CHECK (maxDiff < 3.0e-4f);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Kick: Advanced parameters
 // ---------------------------------------------------------------------------
 namespace

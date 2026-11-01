@@ -67,11 +67,11 @@ protected:
         shapeNorm  = 1.0f / dsp::softClip (shapeDrive);
         shaping    = p[Shape] > 0.0f;
 
-        noiseAmt   = p[Noise] * 0.01f;
+        noiseAmt   = p[Noise] * 0.01f * t.toneScale (0.8f);
         noiseEnv   = 1.0f;
         noiseCoef  = dsp::decayCoef (p[NoiseLength] * 0.001f, sampleRate);
         ratio      = modRatio * dsp::semitonesToRatio (p[MetalTune]);
-        fmIndex    = p[Metal] * 0.01f * 0.7f; // in cycles
+        fmIndex    = p[Metal] * 0.01f * 0.7f * t.toneScale (0.5f); // in cycles
         noiseHp.setup (p[NoiseTone], sampleRate);
         noiseHp.reset();
         phC = phM = 0.0f;

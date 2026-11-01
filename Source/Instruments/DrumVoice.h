@@ -16,6 +16,13 @@ struct TriggerInfo
     float gain      = 1.0f; // velocity * accent, already mapped to linear gain
     float tuneSemis = 0.0f; // per-step parameter lock (0 = none)
     float decayMul  = 1.0f; // per-step parameter lock (1 = none)
+    float tone      = 1.0f; // brightness of this hit: 1 = as set, lower = duller (Character section)
+
+    // Scale for a brightness-related quantity (click level, cutoff, noise mix).
+    // `depth` is how strongly it follows the hit's tone: the result is
+    // 1 - depth at tone 0 and exactly 1 at tone 1, so the default leaves every
+    // voice bit-identical.
+    float toneScale (float depth) const noexcept { return 1.0f - depth * (1.0f - tone); }
 };
 
 // Base class for a monophonic drum voice.

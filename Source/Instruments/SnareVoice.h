@@ -42,7 +42,7 @@ protected:
         freq       = p[Tune] * dsp::semitonesToRatio (t.tuneSemis);
         const float tone = p[Tone] * 0.01f;
         bodyMix    = 1.0f - 0.8f * tone;
-        noiseMix   = 0.3f + 0.9f * tone;
+        noiseMix   = (0.3f + 0.9f * tone) * t.toneScale (0.5f); // soft hits: fewer, darker wires
         ring       = p[Ring] * 0.01f;
         bodyEnv    = 1.0f;
         bodyCoef   = dsp::decayCoef (p[BodyDecay] * 0.001f * t.decayMul, sampleRate);
@@ -54,7 +54,7 @@ protected:
         pitchCoef  = dsp::timeConstantCoef (p[DropTime] * 0.001f, sampleRate);
         width      = p[Width] * 0.01f;
 
-        const float cutoff = 600.0f * std::pow (10.0f, p[Snappy] * 0.01f); // 600 Hz .. 6 kHz
+        const float cutoff = 600.0f * std::pow (10.0f, p[Snappy] * 0.01f) * t.toneScale (0.5f); // 600 Hz .. 6 kHz
         hpL.setup (cutoff, 0.7f, sampleRate);
         hpR.setup (cutoff, 0.7f, sampleRate);
         hpL.reset();
