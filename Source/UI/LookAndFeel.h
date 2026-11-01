@@ -5,24 +5,26 @@
 namespace fp::ui
 {
 
-// Palette: charcoal surfaces, one restrained amber accent.
+// Palette: near-black hardware panels with bone-white as the "on" colour,
+// thin outlines, and amber reserved for accents and the playhead.
 namespace colours
 {
-inline const juce::Colour background  { 0xff111215 };
-inline const juce::Colour panel       { 0xff191b1f };
-inline const juce::Colour raised      { 0xff212429 };
-inline const juce::Colour well        { 0xff0d0e10 };
-inline const juce::Colour border      { 0xff2a2e35 };
-inline const juce::Colour borderLight { 0xff3a3f48 };
-inline const juce::Colour text        { 0xffe6e8ec };
-inline const juce::Colour textDim     { 0xff8e949f };
-inline const juce::Colour textFaint   { 0xff5b616c };
-inline const juce::Colour accent      { 0xffff9f1c };
-inline const juce::Colour accentHot   { 0xffffd27a };
-inline const juce::Colour accentDim   { 0xff6b4512 };
+inline const juce::Colour background  { 0xff0e0e0d };
+inline const juce::Colour panel       { 0xff141413 };
+inline const juce::Colour raised      { 0xff1d1d1b };
+inline const juce::Colour well        { 0xff090908 };
+inline const juce::Colour border      { 0xff32312d };
+inline const juce::Colour borderLight { 0xff5a5852 };
+inline const juce::Colour text        { 0xfff0eadb };
+inline const juce::Colour textDim     { 0xffa39d8f };
+inline const juce::Colour textFaint   { 0xff5f5b53 };
+inline const juce::Colour accent      { 0xffebe4d2 }; // bone: active steps, values, toggles
+inline const juce::Colour accentHot   { 0xffffa62b }; // amber: accents, playhead, live values
+inline const juce::Colour accentDim   { 0xff4a473f };
+inline const juce::Colour ink         { 0xff121211 }; // text and marks drawn on bone
 inline const juce::Colour mute        { 0xffe5484d };
 inline const juce::Colour solo        { 0xfff2c94c };
-inline const juce::Colour meter       { 0xff3dd68c };
+inline const juce::Colour meter       { 0xffd9d2bf };
 inline const juce::Colour meterHot    { 0xffff5f56 };
 } // namespace colours
 
@@ -31,7 +33,17 @@ inline juce::Font font (float height, bool bold = false)
     return juce::Font (juce::FontOptions (height, bold ? juce::Font::bold : juce::Font::plain));
 }
 
-// Draws a section panel with a small caps title; returns the content area.
+inline juce::Font monoFont (float height, bool bold = false)
+{
+    return juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), height, bold ? juce::Font::bold : juce::Font::plain));
+}
+
+// Bold uppercase section title with a dashed rule underneath; returns the
+// area below the rule.
+juce::Rectangle<int> drawSectionTitle (juce::Graphics& g, juce::Rectangle<int> area, const juce::String& title,
+                                       const juce::String& subtitle = {});
+
+// Draws a section panel (optionally titled); returns the content area.
 juce::Rectangle<int> drawPanel (juce::Graphics& g, juce::Rectangle<int> area, const juce::String& title);
 
 class FloorplanLookAndFeel final : public juce::LookAndFeel_V4

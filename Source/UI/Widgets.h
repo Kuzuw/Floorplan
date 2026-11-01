@@ -26,7 +26,9 @@ struct UiState : juce::ChangeBroadcaster
 void showParameterMenu (FloorplanProcessor& proc, const juce::String& paramId, juce::Component& target);
 
 // Rotary knob with its label underneath. The value replaces the label while
-// hovering or dragging. Double-click resets, right-click opens MIDI learn.
+// hovering or dragging. In bar style it is a tall vertical bar with the name
+// above and the value always shown below. Double-click resets, right-click
+// opens MIDI learn.
 class Knob final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
@@ -35,6 +37,7 @@ public:
 
     void bind (const juce::String& paramId, const juce::String& label, bool bipolar = false);
     void unbind();
+    void setBarStyle (bool shouldBeBar);
     const juce::String& getParamId() const noexcept { return paramId; }
 
     void paint (juce::Graphics&) override;
@@ -59,7 +62,7 @@ private:
     KnobSlider slider;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
     juce::String paramId, label;
-    bool hovering = false, dragging = false;
+    bool hovering = false, dragging = false, bar = false;
 };
 
 // Toggle button bound to a bool parameter.

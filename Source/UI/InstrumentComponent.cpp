@@ -47,9 +47,9 @@ void InstrumentComponent::resized()
 
 void InstrumentComponent::paint (juce::Graphics& g)
 {
-    g.setColour (colours::textFaint);
-    g.setFont (font (11.0f, true));
-    g.drawText ("INSTRUMENTS", getLocalBounds().withHeight (gridTop).reduced (4, 0), juce::Justification::centredLeft);
+    // Align the title with the sequencer's toolbar row.
+    const auto titleArea = getLocalBounds().withHeight (gridTop).reduced (0, juce::jmax (0, (gridTop - 26) / 2));
+    drawSectionTitle (g, titleArea, "Voices");
 }
 
 void InstrumentComponent::showRowMenu (int voice, Row& row)
@@ -177,31 +177,30 @@ void InstrumentComponent::Row::paint (juce::Graphics& g)
     const auto r = getLocalBounds().toFloat();
     const bool selected = owner.state.voice == voice;
 
-    g.setColour (selected ? colours::raised.brighter (0.06f) : (isMouseOver() ? colours::raised : colours::panel));
-    g.fillRoundedRectangle (r, 4.0f);
+    g.setColour (selected ? colours::raised.brighter (0.05f) : (isMouseOver() ? colours::raised : colours::panel));
+    g.fillRect (r);
+    g.setColour (selected ? colours::accent : colours::border);
+    g.drawRect (r, 1.0f);
     if (selected)
-    {
-        g.setColour (colours::accent);
-        g.fillRoundedRectangle (r.withWidth (3.0f), 1.5f);
-    }
+        g.fillRect (r.withWidth (3.0f));
 
-    // Trigger pad with activity glow.
+    // Trigger pad with activity flash.
     auto pad = getLocalBounds().reduced (8, 0).removeFromLeft (16).withSizeKeepingCentre (12, 12).toFloat();
     g.setColour (colours::well);
-    g.fillRoundedRectangle (pad, 2.5f);
+    g.fillRect (pad);
     if (flash > 0.0f)
     {
-        g.setColour (colours::accent.withAlpha (flash));
-        g.fillRoundedRectangle (pad, 2.5f);
+        g.setColour (colours::accentHot.withAlpha (flash));
+        g.fillRect (pad);
     }
     g.setColour (colours::borderLight);
-    g.drawRoundedRectangle (pad, 2.5f, 1.0f);
+    g.drawRect (pad, 1.0f);
 
     auto text = getLocalBounds().withTrimmedLeft (30).withTrimmedRight (54);
     const auto& spec = kVoiceSpecs[(size_t) voice];
     g.setColour (selected ? colours::text : colours::textDim);
-    g.setFont (font (13.0f, selected));
-    g.drawText (spec.name, text, juce::Justification::centredLeft);
+    g.setFont (font (12.5f, true));
+    g.drawText (juce::String (spec.name).toUpperCase(), text, juce::Justification::centredLeft);
 
     // Small badge: sample-based voice or missing sample.
     if (shownSample)

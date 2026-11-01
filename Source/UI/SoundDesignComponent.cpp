@@ -14,7 +14,11 @@ constexpr int kPreviewWidth = 240;
 SoundDesignComponent::SoundDesignComponent (FloorplanProcessor& p, UiState& s) : proc (p), state (s)
 {
     for (int i = 0; i < kNumSynthParams; ++i)
-        addAndMakeVisible (synthKnobs.add (new Knob (proc)));
+    {
+        auto* k = synthKnobs.add (new Knob (proc));
+        k->setBarStyle (true);
+        addAndMakeVisible (k);
+    }
 
     for (auto* k : { &filterKnob, &driveKnob, &levelKnob, &panKnob, &sampleTuneKnob, &sampleDecayKnob })
         addAndMakeVisible (k);
@@ -170,11 +174,11 @@ void SoundDesignComponent::resized()
     }
     sampleButton.setBounds (buttons.withWidth (juce::jmin (buttons.getWidth(), 200)));
 
-    r.removeFromTop (10);
-    auto row1 = r.removeFromTop (r.getHeight() / 2);
+    r.removeFromTop (8);
+    auto row1 = r.removeFromTop (juce::roundToInt ((float) r.getHeight() * 0.6f));
     const int knobW = row1.getWidth() / kNumSynthParams;
     for (auto* k : synthKnobs)
-        k->setBounds (row1.removeFromLeft (knobW).reduced (4, 2));
+        k->setBounds (row1.removeFromLeft (knobW).reduced (3, 0));
 
     auto row2 = r;
     const int w2 = row2.getWidth() / kNumSynthParams;
@@ -186,17 +190,9 @@ void SoundDesignComponent::resized()
 
 void SoundDesignComponent::paint (juce::Graphics& g)
 {
-    auto content = drawPanel (g, getLocalBounds(), {});
     const auto& spec = kVoiceSpecs[(size_t) boundVoice];
-
-    auto title = content.removeFromTop (22);
-    g.setColour (colours::text);
-    g.setFont (font (16.0f, true));
-    g.drawText (juce::String (spec.name).toUpperCase(), title.removeFromLeft (160), juce::Justification::centredLeft);
-    g.setColour (colours::textFaint);
-    g.setFont (font (10.5f, true));
-    g.drawText (shownSample ? juce::String ("SAMPLE PLAYBACK") : juce::String (kEngineNames[(int) spec.engine]),
-                title, juce::Justification::centredLeft);
+    drawSectionTitle (g, drawPanel (g, getLocalBounds(), {}), spec.name,
+                      shownSample ? juce::String ("Sample playback") : juce::String (kEngineNames[(int) spec.engine]));
 
     // Routing and MIDI info row
     g.setColour (colours::textFaint);
@@ -208,7 +204,10 @@ void SoundDesignComponent::paint (juce::Graphics& g)
     // Waveform preview
     const auto pr = previewArea.toFloat();
     g.setColour (colours::well);
-    g.fillRoundedRectangle (pr, 4.0f);
+    g.fillRect (pr);
+    g.setColour (colours::border);
+    g.drawRect (pr, 1.0f);
+    g.fillRect (pr.getX(), pr.getCentreY(), pr.getWidth(), 1.0f);
     if (! previewMin.empty() && ! shownSample)
     {
         const float mid = pr.getCentreY();
@@ -224,15 +223,16 @@ void SoundDesignComponent::paint (juce::Graphics& g)
         for (int x = n - 1; x >= 0; --x)
             wave.lineTo (pr.getX() + pr.getWidth() * (float) x / (float) (n - 1), mid - previewMin[(size_t) x] * scale);
         wave.closeSubPath();
-        g.setColour (colours::accent.withAlpha (0.25f));
+        g.setColour (colours::accent.withAlpha (0.12f));
         g.fillPath (wave);
-        g.setColour (colours::accent.withAlpha (0.9f));
+        g.setColour (colours::accent.withAlpha (0.95f));
         g.strokePath (wave, juce::PathStrokeType (1.0f));
     }
     g.setColour (colours::textFaint);
-    g.setFont (font (9.5f, true));
+    g.setFont (monoFont (9.5f, true));
     g.drawText (shownSample ? juce::String ("SAMPLE") : juce::String (juce::roundToInt (previewSeconds * 1000.0f)) + " MS",
                 previewArea.reduced (6, 4), juce::Justification::topRight);
+    g.drawText ("SCOPE // " + juce::String (spec.shortName), previewArea.reduced (6, 4), juce::Justification::bottomLeft);
 }
 
 } // namespace fp::ui

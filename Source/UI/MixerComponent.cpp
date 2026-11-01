@@ -52,7 +52,7 @@ void MixerComponent::Strip::paint (juce::Graphics& g)
     if (selected)
     {
         g.setColour (colours::raised.withAlpha (0.7f));
-        g.fillRoundedRectangle (getLocalBounds().toFloat(), 4.0f);
+        g.fillRect (getLocalBounds());
     }
     g.setColour (selected ? colours::accent : colours::textDim);
     g.setFont (font (10.5f, true));

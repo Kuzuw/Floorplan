@@ -33,6 +33,8 @@ add_library(floorplan_core STATIC
 
 target_include_directories(floorplan_core PUBLIC Source)
 target_compile_features(floorplan_core PUBLIC cxx_std_17)
+# Linked into the VST3 shared object, so it must be position-independent (Linux).
+set_target_properties(floorplan_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 if(MSVC)
     target_compile_options(floorplan_core PRIVATE /W4 /fp:fast)
@@ -46,8 +48,8 @@ endif()
 if(FLOORPLAN_BUILD_PLUGIN)
 juce_add_plugin(Floorplan
     COMPANY_NAME "Floorplan Contributors"
-    COMPANY_WEBSITE "https://github.com/floorplan-audio/floorplan"
-    BUNDLE_ID "io.github.floorplan.drummachine"
+    COMPANY_WEBSITE "https://github.com/Kuzuw/Floorplan"
+    BUNDLE_ID "io.github.kuzuw.floorplan"
     PLUGIN_MANUFACTURER_CODE Flpn
     PLUGIN_CODE Fdm1
     FORMATS VST3 Standalone
@@ -87,7 +89,6 @@ set(FLOORPLAN_JUCE_DEFINITIONS
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
-    JUCE_DISPLAY_SPLASH_SCREEN=0
     JUCE_REPORT_APP_USAGE=0
     JUCE_MODAL_LOOPS_PERMITTED=0
     FLOORPLAN_VERSION_STRING="${PROJECT_VERSION}"

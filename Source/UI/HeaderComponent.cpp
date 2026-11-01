@@ -176,9 +176,11 @@ void HeaderComponent::paint (juce::Graphics& g)
 
     // Status readout
     g.setColour (colours::well);
-    g.fillRoundedRectangle (statusArea.toFloat(), 3.0f);
-    g.setColour (statusIsLearn ? colours::accent : colours::textDim);
-    g.setFont (font (10.5f, true));
+    g.fillRect (statusArea);
+    g.setColour (colours::border);
+    g.drawRect (statusArea, 1);
+    g.setColour (statusIsLearn ? colours::accentHot : colours::textDim);
+    g.setFont (monoFont (10.5f, true));
     g.drawFittedText (status, statusArea.reduced (8, 2), juce::Justification::centred, 2, 0.8f);
 
     // CPU readout
@@ -189,7 +191,7 @@ void HeaderComponent::paint (juce::Graphics& g)
     g.setFont (font (10.0f, true));
     g.drawText ("CPU", cpuArea.removeFromTop (cpuArea.getHeight() / 2), juce::Justification::bottomRight);
     g.setColour (shownCpu > 70 ? colours::meterHot : colours::textDim);
-    g.setFont (font (13.0f, true));
+    g.setFont (monoFont (13.0f, true));
     g.drawText (juce::String (juce::jmax (0, shownCpu)) + "%", cpuArea, juce::Justification::topRight);
 }
 
@@ -210,15 +212,15 @@ void HeaderComponent::BpmDisplay::paint (juce::Graphics& g)
 {
     const auto r = getLocalBounds().toFloat().reduced (0.5f);
     g.setColour (colours::well);
-    g.fillRoundedRectangle (r, 3.0f);
-    g.setColour (colours::border);
-    g.drawRoundedRectangle (r, 3.0f, 1.0f);
+    g.fillRect (r);
+    g.setColour (colours::borderLight);
+    g.drawRect (r, 1.0f);
 
     auto area = getLocalBounds().reduced (8, 2);
     g.setColour (colours::text);
-    g.setFont (font (18.0f, true));
+    g.setFont (monoFont (18.0f, true));
     g.drawText (juce::String (shownBpm, 1), area.removeFromLeft (area.getWidth() - 34), juce::Justification::centredRight);
-    g.setColour (shownHost ? colours::accent : colours::textFaint);
+    g.setColour (shownHost ? colours::accentHot : colours::textFaint);
     g.setFont (font (9.5f, true));
     g.drawText (shownHost ? "HOST" : "BPM", area, juce::Justification::centredRight);
 }

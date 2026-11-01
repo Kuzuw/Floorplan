@@ -45,7 +45,7 @@ Knob::Knob (FloorplanProcessor& p, const juce::String& id, const juce::String& t
     slider.setVelocityBasedMode (false);
     slider.onDragStart = [this] { dragging = true; repaint(); };
     slider.onDragEnd = [this] { dragging = false; repaint(); };
-    slider.onValueChange = [this] { if (hovering || dragging) repaint(); };
+    slider.onValueChange = [this] { if (bar || hovering || dragging) repaint(); };
     slider.onRightClick = [this] { if (paramId.isNotEmpty()) showParameterMenu (proc, paramId, *this); };
     slider.addMouseListener (this, false);
     addAndMakeVisible (slider);
@@ -85,9 +85,26 @@ void Knob::unbind()
     repaint();
 }
 
+void Knob::setBarStyle (bool shouldBeBar)
+{
+    bar = shouldBeBar;
+    slider.setSliderStyle (bar ? juce::Slider::LinearBarVertical : juce::Slider::RotaryHorizontalVerticalDrag);
+    slider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    slider.setSliderSnapsToMousePosition (! bar); // bars drag relatively, like the knobs
+    resized();
+    repaint();
+}
+
 void Knob::resized()
 {
     auto r = getLocalBounds();
+    if (bar)
+    {
+        r.removeFromTop (16);
+        r.removeFromBottom (18);
+        slider.setBounds (r.withSizeKeepingCentre (juce::jmin (r.getWidth() - 6, 46), r.getHeight()));
+        return;
+    }
     r.removeFromBottom (16);
     const int size = juce::jmin (r.getWidth(), r.getHeight());
     slider.setBounds (r.withSizeKeepingCentre (size, size));
@@ -95,6 +112,22 @@ void Knob::resized()
 
 void Knob::paint (juce::Graphics& g)
 {
+    if (bar)
+    {
+        auto r = getLocalBounds();
+        g.setFont (font (10.5f, true));
+        g.setColour (colours::textDim);
+        g.drawFittedText (label.toUpperCase(), r.removeFromTop (16), juce::Justification::centred, 1, 0.7f);
+        if (attachment != nullptr)
+        {
+            g.setFont (monoFont (11.5f, true));
+            g.setColour (dragging ? colours::accentHot : (slider.isEnabled() ? colours::text : colours::textFaint));
+            g.drawFittedText (slider.getTextFromValue (slider.getValue()), r.removeFromBottom (18),
+                              juce::Justification::centred, 1, 0.6f);
+        }
+        return;
+    }
+
     const auto textArea = getLocalBounds().removeFromBottom (16);
     const bool showValue = (hovering || dragging) && attachment != nullptr;
     g.setFont (font (12.0f, showValue));
@@ -176,7 +209,7 @@ void LevelMeter::paint (juce::Graphics& g)
     {
         auto bar = juce::Rectangle<float> (r.getX() + (float) c * (barW + gap), r.getY(), barW, r.getHeight());
         g.setColour (colours::well);
-        g.fillRoundedRectangle (bar, 1.5f);
+        g.fillRect (bar);
 
         // Map -48..+6 dB to the bar height.
         const float db = shown[c] > 0.0f ? juce::Decibels::gainToDecibels (shown[c]) : -100.0f;
@@ -185,7 +218,7 @@ void LevelMeter::paint (juce::Graphics& g)
         {
             auto fill = bar.withTop (bar.getBottom() - bar.getHeight() * norm);
             g.setColour (db > -0.5f ? colours::meterHot : colours::meter.withAlpha (0.85f));
-            g.fillRoundedRectangle (fill, 1.5f);
+            g.fillRect (fill);
         }
 
         // 0 dB tick

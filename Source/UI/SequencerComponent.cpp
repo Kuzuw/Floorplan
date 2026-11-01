@@ -141,8 +141,8 @@ public:
             const int s = geom.first + c;
             const auto r = geom.column (s, 0.0f, (float) kRuler);
             const bool isPlay = s == owner.playStep && owner.playPattern == owner.cachedIndex;
-            g.setColour (isPlay ? colours::accent : (s % 4 == 0 ? colours::textDim : colours::textFaint));
-            g.setFont (font (10.5f, s % 4 == 0 || isPlay));
+            g.setColour (isPlay ? colours::accentHot : (s % 4 == 0 ? colours::textDim : colours::textFaint));
+            g.setFont (monoFont (10.5f, s % 4 == 0 || isPlay));
             g.drawText (geom.inPattern (s) ? juce::String (s + 1) : juce::String(), r, juce::Justification::centred);
         }
 
@@ -164,9 +164,9 @@ public:
         if (owner.playPattern == owner.cachedIndex && owner.playStep >= geom.first && owner.playStep < geom.first + geom.columns)
         {
             const auto col = geom.column (owner.playStep, (float) kRuler, (float) getHeight() - (float) kRuler);
-            g.setColour (juce::Colours::white.withAlpha (0.07f));
+            g.setColour (juce::Colours::white.withAlpha (0.06f));
             g.fillRect (col);
-            g.setColour (colours::accent);
+            g.setColour (colours::accentHot);
             g.fillRect (col.withHeight (2.0f).translated (0.0f, -3.0f).reduced (3.0f, 0.0f));
         }
     }
@@ -177,27 +177,27 @@ public:
         auto r = cell (v, s).reduced (2.0f, 2.5f);
         if (! geom.inPattern (s))
         {
-            g.setColour (colours::well.withAlpha (0.4f));
-            g.fillRoundedRectangle (r, 3.0f);
+            g.setColour (colours::well.withAlpha (0.5f));
+            g.fillRect (r);
             return;
         }
 
         const auto& st = pat.tracks[(size_t) v].steps[(size_t) s];
         const bool beatGroup = (s / 4) % 2 == 0;
-        g.setColour (beatGroup ? juce::Colour (0xff1f2227) : juce::Colour (0xff1a1c21));
-        g.fillRoundedRectangle (r, 3.0f);
+        g.setColour (beatGroup ? juce::Colour (0xff181816) : juce::Colour (0xff121211));
+        g.fillRect (r);
 
         if (st.on)
         {
+            // Bone pad (amber when accented); velocity is the solid height.
             const float vel = (float) st.velocity / 127.0f;
             const auto base = st.accent() ? colours::accentHot : colours::accent;
-            g.setColour (base.withAlpha (0.22f));
-            g.fillRoundedRectangle (r, 3.0f);
-            // Velocity: filled height from the bottom.
-            g.setColour (base.withAlpha (0.55f + 0.45f * vel));
-            g.fillRoundedRectangle (r.withTop (r.getBottom() - r.getHeight() * (0.25f + 0.75f * vel)), 3.0f);
+            g.setColour (base.withAlpha (0.3f));
+            g.fillRect (r);
+            g.setColour (base);
+            g.fillRect (r.withTop (r.getBottom() - r.getHeight() * (0.3f + 0.7f * vel)));
 
-            const auto ink = juce::Colour (0xff1b1408);
+            const auto ink = colours::ink;
             // Probability: small pie in the top-left corner.
             if (st.probability < 100)
             {
@@ -225,7 +225,7 @@ public:
             // Parameter locks: dot bottom-right.
             if (st.tune != 0 || st.decay != 0)
             {
-                g.setColour (juce::Colours::white.withAlpha (0.9f));
+                g.setColour (ink);
                 g.fillEllipse (r.getRight() - 7.0f, r.getBottom() - 7.0f, 4.0f, 4.0f);
             }
             // Microtiming: tick showing the offset from the step start.
@@ -238,14 +238,17 @@ public:
         }
         else if (s % 4 == 0)
         {
-            g.setColour (colours::borderLight.withAlpha (0.5f));
-            g.fillEllipse (juce::Rectangle<float> (3.0f, 3.0f).withCentre (r.getCentre()));
+            g.setColour (colours::borderLight.withAlpha (0.6f));
+            g.fillRect (juce::Rectangle<float> (3.0f, 3.0f).withCentre (r.getCentre()));
         }
+
+        g.setColour (st.on ? (st.accent() ? colours::accentHot : colours::accent) : colours::border);
+        g.drawRect (r, 1.0f);
 
         if (v == owner.state.voice && s == owner.state.step)
         {
-            g.setColour (juce::Colours::white.withAlpha (0.85f));
-            g.drawRoundedRectangle (r.expanded (1.0f), 3.5f, 1.5f);
+            g.setColour (colours::accentHot);
+            g.drawRect (r.expanded (1.5f), 1.5f);
         }
     }
 
@@ -396,7 +399,9 @@ public:
         const auto bounds = getLocalBounds().toFloat();
 
         g.setColour (colours::well);
-        g.fillRoundedRectangle (bounds, 4.0f);
+        g.fillRect (bounds);
+        g.setColour (colours::border);
+        g.drawRect (bounds, 1.0f);
 
         const float h = bounds.getHeight() - 6.0f;
         const float zeroY = range.bipolar ? bounds.getY() + 3.0f + h * 0.5f : bounds.getBottom() - 3.0f;
@@ -430,7 +435,7 @@ public:
             }
 
             g.setColour (st.on ? colours::accent.withAlpha (s == owner.state.step ? 1.0f : 0.8f) : colours::textFaint.withAlpha (0.18f));
-            g.fillRoundedRectangle (bar, 2.0f);
+            g.fillRect (bar);
 
             if (s == hoverStep)
             {
@@ -613,7 +618,7 @@ void SequencerComponent::updateToolbar()
         b->setToggleState (i == cachedIndex, juce::dontSendNotification);
         const bool playing = i == playPattern && proc.isTransportRunning();
         b->setColour (juce::TextButton::textColourOffId,
-                      playing ? colours::accent : (bank.patterns[(size_t) i].isEmpty() ? colours::textFaint : colours::text));
+                      playing ? colours::accentHot : (bank.patterns[(size_t) i].isEmpty() ? colours::textFaint : colours::text));
     }
 
     for (int i = 0; i < (int) kLengthChoices.size(); ++i)

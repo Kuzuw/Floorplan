@@ -6,6 +6,15 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- New hardware-style look: bone-white controls on near-black panels, square outlined step pads, dashed section rules and monospaced readouts. Amber is now reserved for accented steps, the playhead and trigger lights.
+- The six sound controls of each voice are now tall vertical bars with the value always visible.
+
+### Fixed
+
+- Linux build: the core library is now compiled as position-independent code, so it links into the VST3 shared object.
+
 ## [0.1.0] - 2026-11-01
 
 First public release.

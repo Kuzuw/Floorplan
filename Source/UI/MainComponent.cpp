@@ -39,9 +39,9 @@ void MainComponent::paint (juce::Graphics& g)
     // Framed area behind instruments + sequencer.
     const auto top = instruments.getBounds().getUnion (sequencer.getBounds()).expanded (10, 8);
     g.setColour (colours::panel);
-    g.fillRoundedRectangle (top.toFloat(), 6.0f);
+    g.fillRoundedRectangle (top.toFloat(), 2.0f);
     g.setColour (colours::border);
-    g.drawRoundedRectangle (top.toFloat().reduced (0.5f), 6.0f, 1.0f);
+    g.drawRoundedRectangle (top.toFloat().reduced (0.5f), 2.0f, 1.0f);
     g.fillRect (instruments.getRight() + 8, top.getY() + 10, 1, top.getHeight() - 20);
 }
 
