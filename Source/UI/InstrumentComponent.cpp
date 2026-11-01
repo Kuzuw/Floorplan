@@ -105,7 +105,10 @@ void InstrumentComponent::showRowMenu (int voice, Row& row)
             {
                 auto& rng = juce::Random::getSystemRandom();
                 const float amount = proc.apvts.getRawParameterValue (ids::randAmount)->load() * 0.01f;
-                for (int i = 0; i < kNumSynthParams; ++i)
+                // Reset covers every synthesis parameter; randomizing stays on
+                // the main six so it cannot reach for extreme Advanced settings.
+                const int count = result == 9 ? numVoiceParams (voice) : kNumSynthParams;
+                for (int i = 0; i < count; ++i)
                     if (auto* param = proc.apvts.getParameter (ids::synth (voice, i)))
                     {
                         // Randomize around the current value, scaled by the intensity.

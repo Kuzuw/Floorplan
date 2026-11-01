@@ -1,4 +1,5 @@
 #include "UI/SoundDesignComponent.h"
+#include "Instruments/KickVoice.h"
 #include "Parameters/ParameterIDs.h"
 
 namespace fp::ui
@@ -8,7 +9,8 @@ namespace
 {
 constexpr const char* kEngineNames[] = { "Sine body + pitch sweep + click", "Two-mode shell + noise wires",
                                          "Band-passed burst noise", "6-osc metallic + noise", "Tuned FM percussion" };
-constexpr const char* kTabNames[] = { "SOURCE", "TONE", "OUTPUT" };
+constexpr const char* kTabNames[] = { "SOURCE", "PITCH/ENV", "TONE", "OUTPUT" };
+constexpr int kTabWidths[] = { 70, 84, 62, 70 };
 constexpr int kPreviewWidth = 240;
 constexpr int kTitleHeight = 24;
 constexpr int kKnobRowHeight = 92;
@@ -16,7 +18,7 @@ constexpr int kKnobRowHeight = 92;
 
 SoundDesignComponent::SoundDesignComponent (FloorplanProcessor& p, UiState& s) : proc (p), state (s)
 {
-    for (int i = 0; i < kNumSynthParams; ++i)
+    for (int i = 0; i < kMaxVoiceParams; ++i)
         addChildComponent (synthKnobs.add (new Knob (proc)));
 
     for (auto* k : { &filterKnob, &driveKnob, &levelKnob, &panKnob, &sampleTuneKnob, &sampleDecayKnob })
@@ -73,10 +75,10 @@ void SoundDesignComponent::bindVoice()
 {
     const int v = state.voice;
     boundVoice = v;
-    const auto& spec = kVoiceSpecs[(size_t) v];
 
-    for (int i = 0; i < kNumSynthParams; ++i)
-        synthKnobs[i]->bind (ids::synth (v, i), spec.params[(size_t) i].name);
+    // Knobs past numVoiceParams keep their old binding but are never shown.
+    for (int i = 0; i < numVoiceParams (v); ++i)
+        synthKnobs[i]->bind (ids::synth (v, i), voiceParamSpec (v, i).name);
 
     filterKnob.bind (ids::filter (v), "Filter", true);
     driveKnob.bind (ids::drive (v), "Drive");
@@ -95,9 +97,37 @@ void SoundDesignComponent::bindVoice()
 float SoundDesignComponent::parameterHash() const
 {
     float h = (float) boundVoice * 1000.0f;
-    for (int i = 0; i < kNumSynthParams; ++i)
-        h = h * 1.37f + proc.apvts.getRawParameterValue (ids::synth (boundVoice, i))->load();
+    for (auto value : currentParams())
+        h = h * 1.37f + value;
     return h;
+}
+
+std::array<float, kMaxVoiceParams> SoundDesignComponent::currentParams() const
+{
+    std::array<float, kMaxVoiceParams> params {};
+    for (int i = 0; i < numVoiceParams (boundVoice); ++i)
+        params[(size_t) i] = proc.apvts.getRawParameterValue (ids::synth (boundVoice, i))->load();
+    return params;
+}
+
+bool SoundDesignComponent::envelopeTabAvailable() const
+{
+    return hasEnvelopePage (kVoiceSpecs[(size_t) boundVoice].engine) && ! shownSample;
+}
+
+std::vector<int> SoundDesignComponent::pageParams (ParamPage page) const
+{
+    const auto engine = kVoiceSpecs[(size_t) boundVoice].engine;
+
+    // The kick's envelope controls read in stage order, then the pitch sweep.
+    if (page == ParamPage::PitchEnvelope && engine == EngineKind::Kick)
+        return { KickP::Attack, KickP::Punch, KickP::Decay, KickP::Bend, KickP::BendTime };
+
+    std::vector<int> list;
+    for (int i = 0; i < numVoiceParams (boundVoice); ++i)
+        if (paramPage (engine, i) == page)
+            list.push_back (i);
+    return list;
 }
 
 void SoundDesignComponent::refresh()
@@ -125,6 +155,7 @@ void SoundDesignComponent::refresh()
         previewHash = h;
         renderPreview();
         repaint (previewArea);
+        repaint (envelopeArea);
     }
 }
 
@@ -136,16 +167,16 @@ void SoundDesignComponent::renderPreview()
     constexpr double sr = 24000.0;
     voice->prepare (sr);
 
-    std::array<float, kNumSynthParams> params {};
-    for (int i = 0; i < kNumSynthParams; ++i)
-        params[(size_t) i] = proc.apvts.getRawParameterValue (ids::synth (boundVoice, i))->load();
+    const auto params = currentParams();
 
     // Show roughly the audible length, between 150 ms and 2.5 s.
-    float decayMs = 300.0f;
+    float lengthMs = 300.0f;
     for (int i = 0; i < kNumSynthParams; ++i)
         if (juce::String (kVoiceSpecs[(size_t) boundVoice].params[(size_t) i].id) == "decay")
-            decayMs = params[(size_t) i];
-    previewSeconds = juce::jlimit (0.15f, 2.5f, decayMs * 0.001f * 1.1f);
+            lengthMs = params[(size_t) i] * 1.1f;
+    if (kVoiceSpecs[(size_t) boundVoice].engine == EngineKind::Kick)
+        lengthMs += params[KickP::Attack] + params[KickP::Punch] * 0.6f;
+    previewSeconds = juce::jlimit (0.15f, 2.5f, lengthMs * 0.001f);
 
     voice->trigger (params.data(), TriggerInfo {});
     const int total = (int) (previewSeconds * sr);
@@ -171,26 +202,37 @@ void SoundDesignComponent::mouseDown (const juce::MouseEvent& e)
 std::vector<juce::Component*> SoundDesignComponent::visibleControls()
 {
     // A sampled voice has no synthesis controls; its sample controls take their place.
-    std::vector<juce::Component*> source;
-    if (shownSample)
-        source = { &sampleTuneKnob, &sampleDecayKnob };
-    else
-        for (auto* k : synthKnobs)
-            source.push_back (k);
+    auto knobsFor = [this] (const std::vector<int>& indices)
+    {
+        std::vector<juce::Component*> list;
+        for (int i : indices)
+            list.push_back (synthKnobs[i]);
+        return list;
+    };
 
     if (! advanced)
     {
-        source.push_back (&filterKnob);
-        source.push_back (&driveKnob);
-        return source;
+        std::vector<juce::Component*> list;
+        if (shownSample)
+            list = { &sampleTuneKnob, &sampleDecayKnob };
+        else
+            for (int i = 0; i < kNumSynthParams; ++i)
+                list.push_back (synthKnobs[i]);
+        list.push_back (&filterKnob);
+        list.push_back (&driveKnob);
+        return list;
     }
 
     switch (tab)
     {
-        case TabTone:   return { &filterKnob, &driveKnob };
-        case TabOutput: return { &levelKnob, &panKnob, &outputBox };
+        case TabEnvelope: return knobsFor (pageParams (ParamPage::PitchEnvelope));
+        case TabTone:     return { &filterKnob, &driveKnob };
+        case TabOutput:   return { &levelKnob, &panKnob, &outputBox };
         case TabSource:
-        default:        return source;
+        default:
+            if (shownSample)
+                return { &sampleTuneKnob, &sampleDecayKnob };
+            return knobsFor (pageParams (ParamPage::Source));
     }
 }
 
@@ -220,20 +262,28 @@ void SoundDesignComponent::resized()
     for (auto* c : std::initializer_list<juce::Component*> { &filterKnob, &driveKnob, &levelKnob, &panKnob,
                                                               &sampleTuneKnob, &sampleDecayKnob, &outputBox })
         c->setVisible (false);
-    for (auto* b : tabButtons)
-        b->setVisible (advanced);
+    // The Pitch/Env page exists only for engines that expose their envelopes.
+    if (tab == TabEnvelope && ! envelopeTabAvailable())
+    {
+        tab = TabSource;
+        tabButtons[TabSource]->setToggleState (true, juce::dontSendNotification);
+    }
+    for (int t = 0; t < NumTabs; ++t)
+        tabButtons[t]->setVisible (advanced && (t != TabEnvelope || envelopeTabAvailable()));
 
     auto r = getLocalBounds().reduced (12, 10);
     auto title = r.removeFromTop (kTitleHeight);
     if (advanced)
         for (int t = NumTabs; --t >= 0;)
-        {
-            tabButtons[t]->setBounds (title.removeFromRight (70).withHeight (20));
-            title.removeFromRight (4);
-        }
+            if (tabButtons[t]->isVisible())
+            {
+                tabButtons[t]->setBounds (title.removeFromRight (kTabWidths[t]).withHeight (20));
+                title.removeFromRight (4);
+            }
 
     const auto controls = visibleControls();
     dividerX = -1;
+    envelopeArea = {};
 
     if (! advanced)
     {
@@ -277,7 +327,64 @@ void SoundDesignComponent::resized()
     }
     sampleButton.setBounds (buttons);
 
+    if (tab == TabEnvelope)
+    {
+        // Envelope view above its controls.
+        layoutControls (r.removeFromBottom (kKnobRowHeight), controls);
+        r.removeFromBottom (8);
+        envelopeArea = r;
+        return;
+    }
+
     layoutControls (r.withSizeKeepingCentre (r.getWidth(), juce::jmin (r.getHeight(), kKnobRowHeight)).withY (r.getY() + 8), controls);
+}
+
+void SoundDesignComponent::paintEnvelope (juce::Graphics& g)
+{
+    // Drawn from KickVoice's envelope model over the same time span as the scope.
+    using namespace KickP;
+    const auto p = currentParams();
+    const auto screen = drawScreen (g, envelopeArea.toFloat()).reduced (8.0f, 6.0f);
+    auto legend = screen.withHeight (12.0f);
+    const auto plot = screen.withTrimmedTop (18.0f).withTrimmedBottom (2.0f);
+    const float span = previewSeconds;
+    const float bendMax = kVoiceSpecs[Kick].params[Bend].max;
+
+    auto xAt = [&] (float t) { return plot.getX() + plot.getWidth() * juce::jmin (1.0f, t / span); };
+
+    // Stage boundaries: end of attack, end of hold.
+    const float attack = p[Attack] * 0.001f, hold = p[Punch] * 0.01f * 0.06f;
+    g.setColour (colours::screenGhost);
+    g.fillRect (plot.getX(), plot.getBottom(), plot.getWidth(), 1.0f);
+    for (float t : { attack, attack + hold })
+        if (t > 0.0f)
+            g.fillRect (xAt (t), plot.getY(), 1.0f, plot.getHeight());
+
+    juce::Path ampPath, pitchPath;
+    constexpr int points = 200;
+    for (int i = 0; i <= points; ++i)
+    {
+        const float t = span * (float) i / (float) points;
+        const float x = xAt (t);
+        const float ampY = plot.getBottom() - plot.getHeight() * KickVoice::ampEnvelope (p.data(), t);
+        const float pitchY = plot.getBottom() - plot.getHeight() * juce::jlimit (0.0f, 1.0f, KickVoice::pitchSemitones (p.data(), t) / bendMax);
+        i == 0 ? ampPath.startNewSubPath (x, ampY) : ampPath.lineTo (x, ampY);
+        i == 0 ? pitchPath.startNewSubPath (x, pitchY) : pitchPath.lineTo (x, pitchY);
+    }
+    g.setColour (colours::familyMetal);
+    g.strokePath (pitchPath, juce::PathStrokeType (1.5f));
+    g.setColour (colours::accent);
+    g.strokePath (ampPath, juce::PathStrokeType (2.0f));
+
+    g.setFont (monoFont (9.5f, true));
+    g.setColour (colours::accent);
+    g.drawText ("AMP", legend.removeFromLeft (34.0f), juce::Justification::centredLeft);
+    g.setColour (colours::familyMetal);
+    g.drawText ("PITCH +" + juce::String (p[Bend], 1) + " ST", legend.removeFromLeft (120.0f), juce::Justification::centredLeft);
+    g.setColour (colours::screenDim);
+    auto ms = [] (float seconds) { return juce::String (juce::roundToInt (seconds * 1000.0f)); };
+    g.drawText ("A " + ms (attack) + "  H " + ms (hold) + "  D " + ms (p[Decay] * 0.001f) + " MS",
+                legend, juce::Justification::centredRight);
 }
 
 void SoundDesignComponent::paint (juce::Graphics& g)
@@ -311,6 +418,9 @@ void SoundDesignComponent::paint (juce::Graphics& g)
         g.setColour (colours::line);
         g.fillRect (dividerX, filterKnob.getY() + 4, 1, filterKnob.getHeight() - 8);
     }
+
+    if (! envelopeArea.isEmpty())
+        paintEnvelope (g);
 
     // Waveform in its own display window.
     const auto pr = drawScreen (g, previewArea.toFloat()).reduced (4.0f, 6.0f);

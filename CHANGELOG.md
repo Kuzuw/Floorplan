@@ -8,7 +8,13 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- Advanced Mode (ADVANCED in the top bar). The sound panel widens into a tabbed inspector (Source, Tone, Output) for the selected track, and the sequencer stays where it is. The mode is saved with the project and changes no sound or parameter.
+- Advanced Mode (ADVANCED in the top bar). The sound panel widens into a tabbed inspector (Source, Pitch/Env, Tone, Output) for the selected track, and the sequencer stays where it is. The mode is saved with the project and changes no sound or parameter.
+- Five Advanced kick parameters, all automatable:
+  - Attack: a 0–30 ms fade-in of the body.
+  - Shape: waveshapes the sine body towards a square.
+  - Sub: a clean sine at the tuned pitch with a longer tail.
+  - Click Tone and Click Length: the click's high-pass cutoff and decay time, previously fixed at 1.8 kHz and 7 ms.
+- Pitch/Env tab for the kick: the amplitude and pitch envelopes, drawn from the same formulas the sound engine uses, above the Attack, Punch, Decay, Bend and Bend Time controls.
 
 ### Changed
 
@@ -18,6 +24,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Knobs show their value while dragging. Compact knobs show it on hover.
 - Track modules hold mute, solo, an activity dot and an audition badge. The mixer strips keep pan, fader and meter.
 - The minimum window size is now 75% of the design size (was 60%), so labels stay readable.
+- Loading a project now sets any parameter it does not contain to its default. Before, such parameters kept whatever value they had. Projects and kits from 0.1.0 load the new kick parameters at defaults that sound exactly like the 0.1.0 kick, and a test checks this.
+- New parameters are added after all existing ones, so existing parameter indices do not change.
 
 ## [0.1.0] - 2026-11-01
 

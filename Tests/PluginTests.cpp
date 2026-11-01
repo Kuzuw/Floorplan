@@ -357,13 +357,75 @@ FP_TEST (parameters_are_automatable)
         CHECK (std::abs (atMax - ranged->getNormalisableRange().end) < 1.0e-3f);
         ranged->setValueNotifyingHost (ranged->convertTo0to1 (before));
     }
-    CHECK (count == kNumVoices * (kNumSynthParams + 9) + 4 + 9 + kChainSlots);
+    int expected = 4 + 9 + kChainSlots;
+    for (int v = 0; v < kNumVoices; ++v)
+        expected += numVoiceParams (v) + 9;
+    CHECK (count == expected);
     std::printf ("    %d automatable parameters\n", count);
+}
+
+FP_TEST (advanced_parameters_keep_existing_indices)
+{
+    // The 141 parameters of 0.1.0 keep their positions; Advanced ones follow.
+    auto p = makeProcessor();
+    const auto& params = p->getParameters();
+    auto idAt = [&] (int i) { return dynamic_cast<juce::RangedAudioParameter*> (params[i])->getParameterID(); };
+    CHECK (idAt (0) == ids::synth (Kick, KickP::Tune));
+    CHECK (idAt (140) == ids::midiOut);
+    CHECK (idAt (141) == ids::synth (Kick, KickP::Attack));
+}
+
+FP_TEST (old_state_sets_new_parameters_to_default)
+{
+    // A state saved before the kick's Advanced parameters existed must load
+    // them at their defaults, even over a processor where they were changed.
+    auto p = makeProcessor();
+    setParam (*p, ids::synth (Kick, KickP::Attack), 12.0f);
+    setParam (*p, ids::synth (Kick, KickP::Sub), 80.0f);
+
+    juce::XmlElement root ("FLOORPLAN");
+    root.setAttribute ("stateVersion", 1);
+    auto* params = root.createNewChildElement ("PARAMS");
+    auto* tune = params->createNewChildElement ("PARAM");
+    tune->setAttribute ("id", ids::synth (Kick, KickP::Tune));
+    tune->setAttribute ("value", 55.0);
+    juce::MemoryBlock mb;
+    juce::AudioProcessor::copyXmlToBinary (root, mb);
+    p->setStateInformation (mb.getData(), (int) mb.getSize());
+
+    CHECK (std::abs (getParam (*p, ids::synth (Kick, KickP::Tune)) - 55.0f) < 0.01f);
+    CHECK (getParam (*p, ids::synth (Kick, KickP::Attack)) == 0.0f);
+    CHECK (getParam (*p, ids::synth (Kick, KickP::Sub)) == 0.0f);
+    CHECK (std::abs (getParam (*p, ids::synth (Kick, KickP::ClickTone)) - 1800.0f) < 1.0f);
+
+    // And a current state round-trips them.
+    setParam (*p, ids::synth (Kick, KickP::Shape), 40.0f);
+    juce::MemoryBlock state;
+    p->getStateInformation (state);
+    auto q = makeProcessor();
+    q->setStateInformation (state.getData(), (int) state.getSize());
+    CHECK (std::abs (getParam (*q, ids::synth (Kick, KickP::Shape)) - 40.0f) < 0.01f);
 }
 
 // Renders the real editor offscreen to a PNG (used for docs screenshots and
 // as a smoke test that the whole UI can be constructed and painted).
-static int renderScreenshot (const juce::File& target, float scale, bool advanced)
+static void clickButtonNamed (juce::Component& root, const juce::String& text)
+{
+    for (auto* child : root.getChildren())
+    {
+        if (auto* b = dynamic_cast<juce::Button*> (child); b != nullptr && b->getButtonText() == text)
+        {
+            b->setToggleState (true, juce::dontSendNotification);
+            if (b->onClick)
+                b->onClick();
+            return;
+        }
+        clickButtonNamed (*child, text);
+    }
+}
+
+// Optional `tab`: the text of an Advanced Mode tab to show (e.g. "PITCH/ENV").
+static int renderScreenshot (const juce::File& target, float scale, bool advanced, const juce::String& tab = {})
 {
     auto p = makeProcessor();
     p->setInternalPlaying (true);
@@ -372,6 +434,8 @@ static int renderScreenshot (const juce::File& target, float scale, bool advance
 
     std::unique_ptr<juce::AudioProcessorEditor> editor (p->createEditor());
     editor->setSize (1280, 800);
+    if (tab.isNotEmpty())
+        clickButtonNamed (*editor, tab);
     const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, scale);
 
     target.deleteFile();
@@ -389,6 +453,7 @@ int main (int argc, char** argv)
     if (argc > 2 && std::strcmp (argv[1], "--screenshot") == 0)
         return renderScreenshot (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]),
                                  argc > 3 ? (float) std::atof (argv[3]) : 1.0f,
-                                 argc > 4 && std::strcmp (argv[4], "--advanced") == 0);
+                                 argc > 4 && std::strcmp (argv[4], "--advanced") == 0,
+                                 argc > 5 ? juce::String (argv[5]) : juce::String());
     return fptest::runMain (argc, argv);
 }

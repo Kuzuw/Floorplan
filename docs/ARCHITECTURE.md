@@ -44,8 +44,15 @@ table, so adding a parameter to a voice is one edit. Per-engine index
 namespaces (`KickP::Tune`, `SnareP::Snappy`, …) make the DSP code readable
 without string lookups.
 
+An engine can add extra parameters for Advanced Mode (`kKickExtras`, returned
+by `extraParams()`). A voice receives them in the same array, after its main
+six, so `numVoiceParams()` and `voiceParamSpec()` cover both. Their defaults
+must leave the sound unchanged, because projects and kits saved earlier do not
+contain them. `paramPage()` says which inspector tab shows each parameter.
+
 `ParameterLayout.cpp` turns the table into an `AudioProcessorValueTreeState`
-layout of 141 parameters. `ParameterCache` resolves every parameter's raw
+layout of 146 parameters. The extras sit in a last "Advanced" group, so adding
+them never moves an existing parameter's index. `ParameterCache` resolves every parameter's raw
 `std::atomic<float>*` once at construction, so the audio thread reads plain
 atomics and never looks anything up by string.
 
@@ -170,13 +177,13 @@ involved, before going to the engine.
 </FLOORPLAN>
 ```
 
-- Unknown elements are ignored and missing ones keep their defaults, so newer and older versions degrade gracefully.
+- Unknown elements are ignored. A parameter missing from the saved state is set to its default (not left at its current value), so newer and older versions degrade gracefully.
 - `stateVersion` is bumped whenever the meaning of saved data changes. `setStateInformation` then migrates. Version 0 (a bare APVTS tree from early builds) is still accepted.
 - Samples are stored by path only. A missing file is flagged in the UI and the voice falls back to synthesis, so a project always loads.
 
 ## Adding a voice parameter or a new voice
 
-1. Add or adjust the entry in `kVoiceSpecs` (`ParameterSpecs.h`). Never reuse or rename an existing ID.
+1. Add or adjust the entry in `kVoiceSpecs` (`ParameterSpecs.h`), or add an Advanced Mode parameter to the engine's extras table with a default that keeps the old sound. Never reuse or rename an existing ID.
 2. Read the new parameter index in the engine class under `Instruments/`.
 3. If the parameter count changes, update the expected count in `parameters_are_automatable`.
 4. Add a test in `CoreTests.cpp`: the output must be finite and audible, and must decay to silence at both extremes of the new parameter.

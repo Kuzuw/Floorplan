@@ -9,12 +9,15 @@
 
 #include <array>
 #include <cstdint>
+#include <iterator>
 
 namespace fp
 {
 
 inline constexpr int kNumVoices      = 8;
-inline constexpr int kNumSynthParams = 6;
+inline constexpr int kNumSynthParams = 6;  // main controls of every voice (Standard Mode)
+inline constexpr int kMaxExtraParams = 8;  // Advanced Mode controls an engine may add
+inline constexpr int kMaxVoiceParams = kNumSynthParams + kMaxExtraParams;
 inline constexpr int kMaxSteps       = 64;
 inline constexpr int kNumPatterns    = 16;
 inline constexpr int kChainSlots     = 8;
@@ -42,8 +45,9 @@ struct VoiceSpec
     std::array<SynthParamSpec, kNumSynthParams> params;
 };
 
-// Index meaning for each engine. Keep in sync with the tables below.
-namespace KickP  { enum { Tune, Bend, BendTime, Decay, Click, Punch }; }
+// Index meaning for each engine. Keep in sync with the tables below. Indices
+// from kNumSynthParams on are the engine's extra (Advanced Mode) parameters.
+namespace KickP  { enum { Tune, Bend, BendTime, Decay, Click, Punch, Attack, Shape, Sub, ClickTone, ClickLength }; }
 namespace SnareP { enum { Tune, Tone, Decay, Snappy, BodyDecay, Width }; }
 namespace ClapP  { enum { Tune, Decay, Spread, Bursts, Tone, Width }; }
 namespace MetalP { enum { Tune, Decay, Bright, Metal, Tone, Width }; }
@@ -117,6 +121,68 @@ inline constexpr std::array<VoiceSpec, kNumVoices> kVoiceSpecs {{
 
 // Voice indices, matching kVoiceSpecs order.
 enum VoiceIndex { Kick = 0, Snare, ClosedHat, OpenHat, Clap, Perc, Tom, Cymbal };
+
+// Extra synthesis parameters per engine, shown only in Advanced Mode. They
+// follow the main six in the array a voice receives. Every default leaves the
+// sound exactly as it was before the parameter existed, so older projects and
+// kits (which do not store them) sound unchanged.
+inline constexpr SynthParamSpec kKickExtras[] {
+    { "attack",    "Attack",    "ms", 0.0f,   30.0f,    0.0f,    6.0f    },
+    { "shape",     "Shape",     "%",  0.0f,   100.0f,   0.0f,    0.0f    },
+    { "sub",       "Sub",       "%",  0.0f,   100.0f,   0.0f,    0.0f    },
+    { "clicktone", "Click Tone", "Hz", 500.0f, 10000.0f, 1800.0f, 2500.0f },
+    { "clicklen",  "Click Len", "ms", 1.0f,   50.0f,    7.0f,    10.0f   },
+};
+
+struct ParamList
+{
+    const SynthParamSpec* data;
+    int count;
+};
+
+constexpr ParamList extraParams (EngineKind engine) noexcept
+{
+    switch (engine)
+    {
+        case EngineKind::Kick: return { kKickExtras, (int) std::size (kKickExtras) };
+        default:               return { nullptr, 0 };
+    }
+}
+
+static_assert (std::size (kKickExtras) <= (size_t) kMaxExtraParams);
+
+// All synthesis parameters of a voice: the main six, then the extras.
+constexpr int numVoiceParams (int voice) noexcept
+{
+    return kNumSynthParams + extraParams (kVoiceSpecs[(size_t) voice].engine).count;
+}
+
+constexpr const SynthParamSpec& voiceParamSpec (int voice, int index) noexcept
+{
+    const auto& spec = kVoiceSpecs[(size_t) voice];
+    return index < kNumSynthParams ? spec.params[(size_t) index]
+                                   : extraParams (spec.engine).data[index - kNumSynthParams];
+}
+
+// Advanced Mode inspector page a synthesis parameter is shown on.
+enum class ParamPage : uint8_t { Source, PitchEnvelope };
+
+constexpr ParamPage paramPage (EngineKind engine, int index) noexcept
+{
+    if (engine == EngineKind::Kick)
+    {
+        switch (index)
+        {
+            case KickP::Bend: case KickP::BendTime: case KickP::Attack: case KickP::Punch: case KickP::Decay:
+                return ParamPage::PitchEnvelope;
+            default: break;
+        }
+    }
+    return ParamPage::Source;
+}
+
+// Whether an engine has a Pitch & Envelope page (its envelope DSP is exposed).
+constexpr bool hasEnvelopePage (EngineKind engine) noexcept { return engine == EngineKind::Kick; }
 
 // Groove and sequencer option tables (index == stored parameter value).
 inline constexpr std::array<const char*, 5> kResolutionNames { "1/8", "1/16", "1/32", "1/8T", "1/16T" };

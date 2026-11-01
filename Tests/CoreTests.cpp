@@ -6,6 +6,7 @@
 #include "Audio/TripleBuffer.h"
 #include "DSP/DSPCore.h"
 #include "DSP/SineTable.h"
+#include "Instruments/KickVoice.h"
 #include "Sequencer/Pattern.h"
 #include "Sequencer/Sequencer.h"
 
@@ -171,15 +172,22 @@ FP_TEST (noise_is_zero_mean_and_bounded)
 FP_TEST (parameter_specs_are_valid)
 {
     std::set<std::string> ids;
-    for (const auto& v : kVoiceSpecs)
+    for (int v = 0; v < kNumVoices; ++v)
     {
-        CHECK (ids.insert (v.id).second);
-        for (const auto& p : v.params)
+        const std::string voiceId = kVoiceSpecs[(size_t) v].id;
+        CHECK (ids.insert (voiceId).second);
+        // Suffixes taken by the channel strip parameters.
+        for (const char* s : { "level", "pan", "mute", "solo", "filter", "drive", "out", "stune", "sdecay" })
+            ids.insert (voiceId + "_" + s);
+
+        CHECK (numVoiceParams (v) <= kMaxVoiceParams);
+        for (int i = 0; i < numVoiceParams (v); ++i)
         {
+            const auto& p = voiceParamSpec (v, i);
             CHECK (p.min < p.max);
             CHECK (p.def >= p.min && p.def <= p.max);
             CHECK (p.centre == 0.0f || (p.centre > p.min && p.centre < p.max));
-            CHECK (ids.insert (std::string (v.id) + "_" + p.id).second);
+            CHECK (ids.insert (voiceId + "_" + p.id).second);
         }
     }
 }
@@ -194,9 +202,9 @@ FP_TEST (extreme_parameters_stay_finite)
             for (int v = 0; v < kNumVoices; ++v)
             {
                 auto& vp = engine.voiceParams (v);
-                for (int i = 0; i < kNumSynthParams; ++i)
+                for (int i = 0; i < numVoiceParams (v); ++i)
                 {
-                    const auto& spec = kVoiceSpecs[(size_t) v].params[(size_t) i];
+                    const auto& spec = voiceParamSpec (v, i);
                     vp.synth[(size_t) i] = corner == 0 ? spec.min : corner == 1 ? spec.max : ((i & 1) ? spec.min : spec.max);
                 }
                 vp.drive = corner == 1 ? 1.0f : 0.0f;
@@ -323,6 +331,218 @@ FP_TEST (retrigger_is_click_free)
     CHECK (maxJump < 0.25f);
 }
 
+// ---------------------------------------------------------------------------
+// Kick: Advanced parameters
+// ---------------------------------------------------------------------------
+namespace
+{
+using VoiceArray = std::array<float, kMaxVoiceParams>;
+
+VoiceArray defaultParams (int voice)
+{
+    VoiceArray p {};
+    for (int i = 0; i < numVoiceParams (voice); ++i)
+        p[(size_t) i] = voiceParamSpec (voice, i).def;
+    return p;
+}
+
+// One hit of a voice, rendered directly (no channel strip), left channel.
+std::vector<float> renderVoiceDirect (int voice, const VoiceArray& p, double sr, double seconds)
+{
+    auto v = createSynthVoice (voice);
+    v->prepare (sr);
+    v->trigger (p.data(), TriggerInfo {});
+    std::vector<float> L ((size_t) (sr * seconds)), R (L.size());
+    v->render (L.data(), R.data(), (int) L.size());
+    return L;
+}
+
+// The kick exactly as 0.1.0 rendered it, before it had Advanced parameters.
+std::vector<float> renderOriginalKick (const float* p, double sr, int total)
+{
+    using namespace KickP;
+    const float inv = (float) (1.0 / sr);
+    const float baseFreq = p[Tune], sweepDepth = dsp::semitonesToRatio (p[Bend]) - 1.0f;
+    const float sweepCoef = dsp::timeConstantCoef (p[BendTime] * 0.001f, sr);
+    const float ampCoef = dsp::decayCoef (p[Decay] * 0.001f, sr);
+    const float clickAmt = p[Click] * 0.01f, clickCoef = dsp::decayCoef (0.007f, sr);
+    float sweepEnv = 1.0f, amp = 1.0f, clickEnv = 1.0f, phase = 0.0f;
+    int holdLeft = (int) (p[Punch] * 0.01f * 0.06f * (float) sr);
+    dsp::OnePoleHp hp;
+    hp.setup (1800.0f, sr);
+    dsp::Noise noise;
+
+    std::vector<float> out ((size_t) total);
+    for (auto& o : out)
+    {
+        phase += baseFreq * (1.0f + sweepDepth * sweepEnv) * inv;
+        sweepEnv *= sweepCoef;
+        if (phase >= 1.0f) phase -= 1.0f;
+        const float body = dsp::SineTable::sin2pi (phase) * amp;
+        if (holdLeft > 0) --holdLeft; else amp *= ampCoef;
+        float click = 0.0f;
+        if (clickEnv > 1.0e-4f)
+        {
+            click = hp.process (noise.next()) * clickEnv * clickAmt * 0.6f;
+            clickEnv *= clickCoef;
+        }
+        o = body + click;
+    }
+    return out;
+}
+
+float peakIn (const std::vector<float>& x, size_t from, size_t to)
+{
+    float p = 0.0f;
+    for (size_t i = from; i < std::min (to, x.size()); ++i) p = std::max (p, std::abs (x[i]));
+    return p;
+}
+
+double energyIn (const std::vector<float>& x, size_t from, size_t to)
+{
+    double e = 0.0;
+    for (size_t i = from; i < std::min (to, x.size()); ++i) e += (double) x[i] * x[i];
+    return e;
+}
+} // namespace
+
+FP_TEST (kick_defaults_match_the_original_kick)
+{
+    // Older projects and kits do not store the new parameters, so the kick at
+    // their defaults must still be the 0.1.0 kick.
+    const double sr = 48000.0;
+    auto p = defaultParams (Kick);
+    for (int variant = 0; variant < 3; ++variant)
+    {
+        if (variant == 1) { p[KickP::Punch] = 90.0f; p[KickP::Click] = 100.0f; p[KickP::Bend] = 40.0f; }
+        if (variant == 2) { p[KickP::Tune] = 31.0f; p[KickP::Decay] = 1800.0f; p[KickP::BendTime] = 150.0f; }
+        const auto now = renderVoiceDirect (Kick, p, sr, 1.0);
+        const auto ref = renderOriginalKick (p.data(), sr, (int) now.size());
+        float maxDiff = 0.0f;
+        for (size_t i = 0; i < now.size(); ++i) maxDiff = std::max (maxDiff, std::abs (now[i] - ref[i]));
+        CHECK (maxDiff < 1.0e-4f);
+    }
+}
+
+FP_TEST (kick_attack_softens_the_onset)
+{
+    const double sr = 48000.0;
+    auto p = defaultParams (Kick);
+    p[KickP::Click] = 0.0f;
+    p[KickP::Bend] = 0.0f;
+    const auto hard = renderVoiceDirect (Kick, p, sr, 0.2);
+    p[KickP::Attack] = 20.0f;
+    const auto soft = renderVoiceDirect (Kick, p, sr, 0.2);
+
+    CHECK (peakIn (soft, 0, 96) < 0.2f * peakIn (hard, 0, 96));          // first 2 ms
+    CHECK (peakIn (soft, 1440, 2880) > 0.9f * peakIn (hard, 1440, 2880)); // 30-60 ms: full level
+}
+
+FP_TEST (kick_envelope_model_matches_rendered_output)
+{
+    // The editor draws KickVoice::ampEnvelope; it must describe what is heard.
+    const double sr = 48000.0;
+    auto p = defaultParams (Kick);
+    p[KickP::Click] = 0.0f;
+    p[KickP::Bend] = 0.0f;
+    p[KickP::Tune] = 100.0f; // 10 ms period
+    p[KickP::Attack] = 10.0f;
+    p[KickP::Punch] = 50.0f; // 30 ms hold
+    p[KickP::Decay] = 1500.0f;
+    const auto out = renderVoiceDirect (Kick, p, sr, 1.2);
+
+    for (size_t i = 0; i < out.size(); ++i)
+        if (std::abs (out[i]) > KickVoice::ampEnvelope (p.data(), (float) ((double) i / sr)) + 1.0e-3f)
+        {
+            CHECK (false); // output exceeds the drawn envelope
+            break;
+        }
+
+    for (float t : { 0.03f, 0.2f, 0.5f, 1.0f })
+    {
+        const auto centre = (size_t) (t * sr);
+        const float measured = peakIn (out, centre - 240, centre + 240); // one period
+        const float model = KickVoice::ampEnvelope (p.data(), t);
+        CHECK_NEAR (measured, model, 0.05f * model);
+    }
+
+    // Pitch model: no sweep without bend; the full bend at t = 0.
+    CHECK_NEAR (KickVoice::pitchSemitones (p.data(), 0.0f), 0.0f, 1.0e-4f);
+    p[KickP::Bend] = 24.0f;
+    CHECK_NEAR (KickVoice::pitchSemitones (p.data(), 0.0f), 24.0f, 1.0e-3f);
+    CHECK (KickVoice::pitchSemitones (p.data(), 0.2f) < 1.0f);
+}
+
+FP_TEST (kick_shape_squares_the_body)
+{
+    const double sr = 48000.0;
+    auto p = defaultParams (Kick);
+    p[KickP::Click] = 0.0f;
+    p[KickP::Bend] = 0.0f;
+    p[KickP::Punch] = 100.0f; // 60 ms at full level
+    auto crest = [&] (float shape)
+    {
+        p[KickP::Shape] = shape;
+        const auto out = renderVoiceDirect (Kick, p, sr, 0.06);
+        const double rms = std::sqrt (energyIn (out, 0, out.size()) / (double) out.size());
+        return std::make_pair ((float) rms / peakIn (out, 0, out.size()), peakIn (out, 0, out.size()));
+    };
+    const auto [clean, cleanPeak] = crest (0.0f);
+    const auto [shaped, shapedPeak] = crest (100.0f);
+    CHECK (clean < 0.75f);           // a sine: rms/peak = 0.707
+    CHECK (shaped > 0.85f);          // close to a square
+    CHECK (shapedPeak < 1.001f);     // normalised, no level jump
+    CHECK (cleanPeak > 0.99f);
+}
+
+FP_TEST (kick_sub_lengthens_the_tail)
+{
+    const double sr = 48000.0;
+    auto p = defaultParams (Kick); // decay 420 ms
+    p[KickP::Click] = 0.0f;
+    const auto dry = renderVoiceDirect (Kick, p, sr, 0.8);
+    p[KickP::Sub] = 100.0f;
+    const auto sub = renderVoiceDirect (Kick, p, sr, 0.8);
+    const auto from = (size_t) (0.45 * sr), to = (size_t) (0.6 * sr);
+    CHECK (energyIn (sub, from, to) > 4.0 * energyIn (dry, from, to));
+}
+
+FP_TEST (kick_click_tone_and_length)
+{
+    // The click layer alone: the same kick with and without click.
+    const double sr = 48000.0;
+    auto clickOnly = [&] (float tone, float length)
+    {
+        auto p = defaultParams (Kick);
+        p[KickP::ClickTone] = tone;
+        p[KickP::ClickLength] = length;
+        p[KickP::Click] = 0.0f;
+        const auto without = renderVoiceDirect (Kick, p, sr, 0.1);
+        p[KickP::Click] = 100.0f;
+        auto with = renderVoiceDirect (Kick, p, sr, 0.1);
+        for (size_t i = 0; i < with.size(); ++i) with[i] -= without[i];
+        return with;
+    };
+
+    const auto shortClick = clickOnly (1800.0f, 2.0f), longClick = clickOnly (1800.0f, 40.0f);
+    CHECK (energyIn (longClick, 480, 1920) > 100.0 * energyIn (shortClick, 480, 1920)); // 10-40 ms
+
+    // Share of the click's energy below a few kHz (8-sample moving average).
+    auto lowShare = [] (const std::vector<float>& x)
+    {
+        double low = 0.0, all = 0.0;
+        for (size_t i = 8; i < 480; ++i)
+        {
+            float avg = 0.0f;
+            for (size_t k = 0; k < 8; ++k) avg += x[i - k] * 0.125f;
+            low += (double) avg * avg;
+            all += (double) x[i] * x[i];
+        }
+        return low / all;
+    };
+    CHECK (lowShare (clickOnly (600.0f, 7.0f)) > 2.0 * lowShare (clickOnly (8000.0f, 7.0f)));
+}
+
 FP_TEST (buffer_size_edge_cases)
 {
     for (int block : { 1, 2, 3, 17, 64, 1000, 4096 })
@@ -407,9 +627,9 @@ FP_TEST (random_fuzz_never_produces_nan)
             for (int v = 0; v < kNumVoices; ++v)
             {
                 auto& vp = engine.voiceParams (v);
-                for (int i = 0; i < kNumSynthParams; ++i)
+                for (int i = 0; i < numVoiceParams (v); ++i)
                 {
-                    const auto& spec = kVoiceSpecs[(size_t) v].params[(size_t) i];
+                    const auto& spec = voiceParamSpec (v, i);
                     vp.synth[(size_t) i] = spec.min + rnd() * (spec.max - spec.min);
                 }
                 vp.filter = rnd() * 2.0f - 1.0f;

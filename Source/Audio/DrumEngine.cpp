@@ -62,8 +62,8 @@ DrumEngine::DrumEngine()
 
         const auto& spec = kVoiceSpecs[(size_t) v];
         auto& vp = voiceSettings[(size_t) v];
-        for (int i = 0; i < kNumSynthParams; ++i)
-            vp.synth[(size_t) i] = spec.params[(size_t) i].def;
+        for (int i = 0; i < numVoiceParams (v); ++i)
+            vp.synth[(size_t) i] = voiceParamSpec (v, i).def;
         vp.levelDb = spec.defaultLevelDb;
         vp.pan = spec.defaultPan;
     }

@@ -16,7 +16,7 @@ namespace fp
 // Continuous (per-block) settings for one channel strip.
 struct VoiceParams
 {
-    std::array<float, kNumSynthParams> synth {};
+    std::array<float, kMaxVoiceParams> synth {}; // [0, numVoiceParams) used
     float levelDb = 0.0f, pan = 0.0f;
     float filter = 0.0f;  // -1 = low-pass closed, 0 = bypass, +1 = high-pass open
     float drive = 0.0f;   // 0..1

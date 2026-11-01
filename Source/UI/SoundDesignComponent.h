@@ -9,8 +9,9 @@ namespace fp::ui
 // offline (message thread) by the real voice DSP.
 //
 // Standard Mode shows the six main synthesis controls with Filter and Drive.
-// Advanced Mode is a wider inspector with tabs (Source, Tone, Output) that
-// expose every control of the voice. Switching never changes a parameter.
+// Advanced Mode is a wider inspector with tabs (Source, Pitch/Env, Tone,
+// Output) that expose every control of the voice, including the engine's
+// extra parameters. Switching never changes a parameter.
 class SoundDesignComponent final : public juce::Component, private juce::ChangeListener
 {
 public:
@@ -26,14 +27,18 @@ public:
     void mouseDown (const juce::MouseEvent&) override;
 
 private:
-    enum Tab { TabSource, TabTone, TabOutput, NumTabs };
+    enum Tab { TabSource, TabEnvelope, TabTone, TabOutput, NumTabs };
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void bindVoice();
     void renderPreview();
     float parameterHash() const;
+    std::array<float, kMaxVoiceParams> currentParams() const;
+    bool envelopeTabAvailable() const;
+    std::vector<int> pageParams (ParamPage page) const;
     std::vector<juce::Component*> visibleControls();
     void layoutControls (juce::Rectangle<int> area, const std::vector<juce::Component*>& controls);
+    void paintEnvelope (juce::Graphics&);
 
     FloorplanProcessor& proc;
     UiState& state;
@@ -50,7 +55,7 @@ private:
     int boundVoice = -1;
     bool shownSample = false;
     float previewHash = -1.0f;
-    juce::Rectangle<int> previewArea, infoArea;
+    juce::Rectangle<int> previewArea, infoArea, envelopeArea;
     int dividerX = -1;                       // standard mode: between source and tone controls
     int shownNote = -1;
     std::vector<float> previewMin, previewMax;

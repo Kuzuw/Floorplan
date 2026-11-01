@@ -136,6 +136,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     seq->addChild (makeBool (ids::midiOut, "MIDI Output", false));
     layout.add (std::move (seq));
 
+    // Advanced Mode synthesis parameters come last, so adding them never moves
+    // the index of an existing parameter (some hosts store automation by index).
+    auto advanced = std::make_unique<juce::AudioProcessorParameterGroup> ("advanced", "Advanced", " | ");
+    for (int v = 0; v < kNumVoices; ++v)
+    {
+        const juce::String vName (kVoiceSpecs[(size_t) v].name);
+        for (int p = kNumSynthParams; p < numVoiceParams (v); ++p)
+        {
+            const auto& ps = voiceParamSpec (v, p);
+            advanced->addChild (makeFloat (ids::synth (v, p), vName + " " + ps.name, ps.min, ps.max, ps.def, ps.centre, ps.unit));
+        }
+    }
+    layout.add (std::move (advanced));
+
     return layout;
 }
 
@@ -156,7 +170,7 @@ ParameterCache::ParameterCache (Apvts& s)
     for (int v = 0; v < kNumVoices; ++v)
     {
         auto& vp = voices[(size_t) v];
-        for (int p = 0; p < kNumSynthParams; ++p)
+        for (int p = 0; p < numVoiceParams (v); ++p)
             vp.synth[(size_t) p] = raw (s, ids::synth (v, p));
         vp.level       = raw (s, ids::level (v));
         vp.pan         = raw (s, ids::pan (v));
@@ -191,7 +205,7 @@ void ParameterCache::readEngine (DrumEngine& engine) const noexcept
     {
         const auto& src = voices[(size_t) v];
         auto& dst = engine.voiceParams (v);
-        for (int p = 0; p < kNumSynthParams; ++p)
+        for (int p = 0; p < numVoiceParams (v); ++p)
             dst.synth[(size_t) p] = load (src.synth[(size_t) p]);
         dst.levelDb     = load (src.level);
         dst.pan         = load (src.pan);

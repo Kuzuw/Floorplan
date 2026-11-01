@@ -24,6 +24,23 @@ namespace
 {
 constexpr int kMidiOutChannel = 10;
 constexpr double kMidiNoteLength = 0.05; // seconds
+
+// A state saved before a parameter existed has no entry for it, and APVTS
+// would keep that parameter's current value. Add the default instead, so an
+// old project sounds the same whatever was loaded before it.
+juce::ValueTree withMissingParametersAtDefault (juce::ValueTree tree, const juce::AudioProcessor& processor)
+{
+    for (auto* p : processor.getParameters())
+        if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
+            if (! tree.getChildWithProperty ("id", rp->getParameterID()).isValid())
+            {
+                juce::ValueTree child ("PARAM");
+                child.setProperty ("id", rp->getParameterID(), nullptr);
+                child.setProperty ("value", rp->convertFrom0to1 (rp->getDefaultValue()), nullptr);
+                tree.appendChild (child, nullptr);
+            }
+    return tree;
+}
 } // namespace
 
 FloorplanProcessor::FloorplanProcessor()
@@ -490,7 +507,7 @@ void FloorplanProcessor::setStateInformation (const void* data, int sizeInBytes)
     // Version 0: a bare APVTS tree (early development builds). Parameters only.
     if (xml->hasTagName (apvts.state.getType()))
     {
-        apvts.replaceState (juce::ValueTree::fromXml (*xml));
+        apvts.replaceState (withMissingParametersAtDefault (juce::ValueTree::fromXml (*xml), *this));
         return;
     }
 
@@ -498,7 +515,7 @@ void FloorplanProcessor::setStateInformation (const void* data, int sizeInBytes)
         return;
 
     if (auto* p = xml->getChildByName (apvts.state.getType()))
-        apvts.replaceState (juce::ValueTree::fromXml (*p));
+        apvts.replaceState (withMissingParametersAtDefault (juce::ValueTree::fromXml (*p), *this));
 
     if (auto* pat = xml->getChildByName ("PATTERNS"))
         if (auto bank = serial::bankFromJson (pat->getAllSubText()))

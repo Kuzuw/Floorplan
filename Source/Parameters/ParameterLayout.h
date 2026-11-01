@@ -29,7 +29,7 @@ public:
 private:
     struct VoicePtrs
     {
-        std::array<std::atomic<float>*, kNumSynthParams> synth {};
+        std::array<std::atomic<float>*, kMaxVoiceParams> synth {}; // [0, numVoiceParams) used
         std::atomic<float>* level = nullptr;
         std::atomic<float>* pan = nullptr;
         std::atomic<float>* mute = nullptr;

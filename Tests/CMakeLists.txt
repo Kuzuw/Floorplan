@@ -18,6 +18,12 @@ set(FLOORPLAN_CORE_TESTS
     mute_and_solo
     open_hat_is_choked_by_closed_hat
     retrigger_is_click_free
+    kick_defaults_match_the_original_kick
+    kick_attack_softens_the_onset
+    kick_envelope_model_matches_rendered_output
+    kick_shape_squares_the_body
+    kick_sub_lengthens_the_tail
+    kick_click_tone_and_length
     buffer_size_edge_cases
     sample_rate_change_preserves_decay_time
     aux_routing
@@ -69,7 +75,9 @@ if(TARGET Floorplan)
         pattern_json_rejects_garbage
         factory_presets_load
         bus_layouts
-        parameters_are_automatable)
+        parameters_are_automatable
+        advanced_parameters_keep_existing_indices
+        old_state_sets_new_parameters_to_default)
 
     foreach(test_name IN LISTS FLOORPLAN_PLUGIN_TESTS)
         add_test(NAME plugin.${test_name} COMMAND floorplan_plugin_tests ${test_name})

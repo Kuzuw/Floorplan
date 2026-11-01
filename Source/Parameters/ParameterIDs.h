@@ -30,9 +30,10 @@ inline juce::String voice (int v, const char* suffix)
     return juce::String (kVoiceSpecs[(size_t) v].id) + "_" + suffix;
 }
 
+// p in [0, numVoiceParams (v)): the main six, then the engine's extras.
 inline juce::String synth (int v, int p)
 {
-    return voice (v, kVoiceSpecs[(size_t) v].params[(size_t) p].id);
+    return voice (v, voiceParamSpec (v, p).id);
 }
 
 inline juce::String level (int v)       { return voice (v, "level"); }
