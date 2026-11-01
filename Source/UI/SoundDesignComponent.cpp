@@ -32,6 +32,9 @@ SoundDesignComponent::SoundDesignComponent (FloorplanProcessor& p, UiState& s) :
     addAndMakeVisible (sampleButton);
     addChildComponent (clearSampleButton);
     addAndMakeVisible (auditionButton);
+    setKeyStyle (auditionButton, KeyStyle::orange);
+    setKeyStyle (clearSampleButton, KeyStyle::dark);
+    levelKnob.setCap (colours::keyDark);
     outputBox.setTooltip ("Output routing: Main mix or a separate stereo output (enable the outputs in your DAW)");
     addAndMakeVisible (outputBox);
 
@@ -195,18 +198,16 @@ void SoundDesignComponent::paint (juce::Graphics& g)
                       shownSample ? juce::String ("Sample playback") : juce::String (kEngineNames[(int) spec.engine]));
 
     // Routing and MIDI info row
-    g.setColour (colours::textFaint);
-    g.setFont (font (10.0f, true));
+    g.setColour (colours::textDim);
+    g.setFont (font (9.5f, true).withExtraKerningFactor (0.06f));
     g.drawText ("OUTPUT", outputBox.getBounds().withX (outputBox.getX() - 52).withWidth (48), juce::Justification::centredLeft);
     const int note = proc.getVoiceNote (boundVoice);
     g.drawText ("MIDI " + juce::MidiMessage::getMidiNoteName (note, true, true, 3), infoArea, juce::Justification::centredLeft);
 
     // Waveform preview
-    const auto pr = previewArea.toFloat();
-    g.setColour (colours::well);
-    g.fillRect (pr);
-    g.setColour (colours::border);
-    g.drawRect (pr, 1.0f);
+    // Waveform in its own display window.
+    const auto pr = drawLcd (g, previewArea.toFloat()).reduced (2.0f, 4.0f);
+    g.setColour (colours::lcdGhost);
     g.fillRect (pr.getX(), pr.getCentreY(), pr.getWidth(), 1.0f);
     if (! previewMin.empty() && ! shownSample)
     {
@@ -223,16 +224,17 @@ void SoundDesignComponent::paint (juce::Graphics& g)
         for (int x = n - 1; x >= 0; --x)
             wave.lineTo (pr.getX() + pr.getWidth() * (float) x / (float) (n - 1), mid - previewMin[(size_t) x] * scale);
         wave.closeSubPath();
-        g.setColour (colours::accent.withAlpha (0.12f));
+        g.setColour (colours::lcdText.withAlpha (0.12f));
         g.fillPath (wave);
-        g.setColour (colours::accent.withAlpha (0.95f));
+        g.setColour (colours::lcdText);
         g.strokePath (wave, juce::PathStrokeType (1.0f));
     }
-    g.setColour (colours::textFaint);
-    g.setFont (monoFont (9.5f, true));
+    g.setColour (colours::lcdDim);
+    g.setFont (monoFont (9.0f, true));
     g.drawText (shownSample ? juce::String ("SAMPLE") : juce::String (juce::roundToInt (previewSeconds * 1000.0f)) + " MS",
-                previewArea.reduced (6, 4), juce::Justification::topRight);
-    g.drawText ("SCOPE // " + juce::String (spec.shortName), previewArea.reduced (6, 4), juce::Justification::bottomLeft);
+                previewArea.reduced (8, 6), juce::Justification::topRight);
+    g.setColour (colours::accent);
+    g.drawText ("SCOPE " + juce::String (spec.shortName), previewArea.reduced (8, 6), juce::Justification::topLeft);
 }
 
 } // namespace fp::ui

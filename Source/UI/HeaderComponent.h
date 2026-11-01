@@ -49,7 +49,7 @@ private:
     juce::TextButton undoButton { "UNDO" }, redoButton { "REDO" };
     juce::TextButton playButton { "PLAY" }, menuButton { "MENU" };
     BpmDisplay bpm { proc };
-    juce::Rectangle<int> statusArea;
+    juce::Rectangle<int> lcdArea, cpuArea;
     juce::String status;
     bool statusIsLearn = false;
     int shownCpu = -1;

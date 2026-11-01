@@ -38,6 +38,7 @@ public:
     void bind (const juce::String& paramId, const juce::String& label, bool bipolar = false);
     void unbind();
     void setBarStyle (bool shouldBeBar);
+    void setCap (juce::Colour capColour); // knob cap plastic colour
     const juce::String& getParamId() const noexcept { return paramId; }
 
     void paint (juce::Graphics&) override;

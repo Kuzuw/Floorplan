@@ -177,36 +177,32 @@ void InstrumentComponent::Row::paint (juce::Graphics& g)
     const auto r = getLocalBounds().toFloat();
     const bool selected = owner.state.voice == voice;
 
-    g.setColour (selected ? colours::raised.brighter (0.05f) : (isMouseOver() ? colours::raised : colours::panel));
-    g.fillRect (r);
-    g.setColour (selected ? colours::accent : colours::border);
-    g.drawRect (r, 1.0f);
-    if (selected)
-        g.fillRect (r.withWidth (3.0f));
-
-    // Trigger pad with activity flash.
-    auto pad = getLocalBounds().reduced (8, 0).removeFromLeft (16).withSizeKeepingCentre (12, 12).toFloat();
-    g.setColour (colours::well);
-    g.fillRect (pad);
-    if (flash > 0.0f)
+    // Selected voice sits in a shallow recess, matching its grid row.
+    if (selected || isMouseOver())
     {
-        g.setColour (colours::accentHot.withAlpha (flash));
-        g.fillRect (pad);
+        g.setColour (juce::Colours::black.withAlpha (selected ? 0.07f : 0.035f));
+        g.fillRoundedRectangle (r, 4.0f);
     }
-    g.setColour (colours::borderLight);
-    g.drawRect (pad, 1.0f);
 
-    auto text = getLocalBounds().withTrimmedLeft (30).withTrimmedRight (54);
+    // Activity LED, then the voice name printed on the plate.
+    drawLed (g, { 11.0f, r.getCentreY() }, 3.0f, colours::accent, flash);
+
+    auto text = getLocalBounds().withTrimmedLeft (24).withTrimmedRight (54);
     const auto& spec = kVoiceSpecs[(size_t) voice];
-    g.setColour (selected ? colours::text : colours::textDim);
-    g.setFont (font (12.5f, true));
+    g.setColour (selected ? colours::ink : colours::textDim);
+    g.setFont (font (11.5f, true).withExtraKerningFactor (0.04f));
     g.drawText (juce::String (spec.name).toUpperCase(), text, juce::Justification::centredLeft);
+    if (selected)
+    {
+        g.setColour (colours::accent);
+        g.fillRect ((float) text.getX(), r.getCentreY() + 8.0f, 14.0f, 2.0f);
+    }
 
     // Small badge: sample-based voice or missing sample.
     if (shownSample)
     {
         const bool missing = owner.proc.isSampleMissing (voice);
-        g.setColour (missing ? colours::mute : colours::accent.withAlpha (0.8f));
+        g.setColour (missing ? colours::mute : colours::accentHot);
         g.setFont (font (9.0f, true));
         g.drawText (missing ? "MISSING" : "SMP", text, juce::Justification::centredRight);
     }

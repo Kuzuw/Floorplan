@@ -51,10 +51,10 @@ void MixerComponent::Strip::paint (juce::Graphics& g)
     const bool selected = state.voice == voice;
     if (selected)
     {
-        g.setColour (colours::raised.withAlpha (0.7f));
-        g.fillRect (getLocalBounds());
+        g.setColour (juce::Colours::black.withAlpha (0.07f));
+        g.fillRoundedRectangle (getLocalBounds().toFloat(), 4.0f);
     }
-    g.setColour (selected ? colours::accent : colours::textDim);
+    g.setColour (selected ? colours::accentHot : colours::textDim);
     g.setFont (font (10.5f, true));
     g.drawText (kVoiceSpecs[(size_t) voice].shortName, getLocalBounds().removeFromBottom (16), juce::Justification::centred);
 }
@@ -74,6 +74,8 @@ MixerComponent::MixerComponent (FloorplanProcessor& p, UiState& s)
     masterFader.setTooltip ("Master volume");
     clipKnob.setTooltip ("Master soft clip / saturation (0 = off)");
     compKnob.setTooltip ("Master bus compressor amount (0 = off)");
+    clipKnob.setCap (colours::keyDark);
+    compKnob.setCap (colours::keyDark);
 
     addAndMakeVisible (masterFader);
     addAndMakeVisible (clipKnob);
@@ -123,8 +125,8 @@ void MixerComponent::paint (juce::Graphics& g)
     auto masterArea = getLocalBounds().reduced (10, 8).removeFromRight (124);
     g.setColour (colours::border);
     g.fillRect (masterArea.getX() - 6, masterArea.getY() + 22, 1, masterArea.getHeight() - 22);
-    g.setColour (colours::accent);
-    g.setFont (font (10.5f, true));
+    g.setColour (colours::ink);
+    g.setFont (font (10.5f, true).withExtraKerningFactor (0.06f));
     g.drawText ("MASTER", masterArea.removeFromBottom (16), juce::Justification::centred);
 }
 

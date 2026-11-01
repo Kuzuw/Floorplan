@@ -8,8 +8,10 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- New hardware-style look: bone-white controls on near-black panels, square outlined step pads, dashed section rules and monospaced readouts. Amber is now reserved for accented steps, the playhead and trigger lights.
-- The six sound controls of each voice are now tall vertical bars with the value always visible.
+- New hardware design language: a light moulded-plastic body with printed labels, physical keys with travel (steps, patterns and functions), plastic knob caps, recessed fader slots, and smoked-glass LCD windows. Signal orange marks active states.
+- The header display shows pattern.step and BPM as 7-segment digits, with transport and clock-source indicators.
+- Step LEDs above the grid show the playhead, and voice LEDs flash on each hit.
+- Each voice's six sound controls are segment bar graphs in small display windows, with the value printed below. Mixer meters are LED columns.
 
 ### Fixed
 

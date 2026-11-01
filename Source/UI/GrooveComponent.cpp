@@ -16,6 +16,9 @@ GrooveComponent::GrooveComponent (FloorplanProcessor& p)
 {
     for (auto* k : { &swingKnob, &accentKnob, &randomKnob, &seedKnob })
         addAndMakeVisible (k);
+    swingKnob.setCap (colours::accent);   // the feel control gets the signal colour
+    accentKnob.setCap (colours::keyDark);
+    setKeyStyle (chainButton, KeyStyle::light);
 
     grooveBox.setTooltip ("Groove template (timing feel)");
     resolutionBox.setTooltip ("Step resolution");
@@ -79,8 +82,8 @@ void GrooveComponent::paint (juce::Graphics& g)
 {
     drawPanel (g, getLocalBounds(), "Groove & Pattern");
 
-    g.setColour (colours::textFaint);
-    g.setFont (font (10.0f, true));
+    g.setColour (colours::textDim);
+    g.setFont (font (9.5f, true).withExtraKerningFactor (0.06f));
     auto label = [&g] (juce::Rectangle<int> area, const juce::String& text)
     { g.drawText (text, area, juce::Justification::centredLeft); };
 

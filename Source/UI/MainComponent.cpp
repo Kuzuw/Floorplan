@@ -35,20 +35,22 @@ MainComponent::~MainComponent()
 void MainComponent::paint (juce::Graphics& g)
 {
     g.fillAll (colours::background);
+    drawPlasticTexture (g, getLocalBounds());
 
-    // Framed area behind instruments + sequencer.
-    const auto top = instruments.getBounds().getUnion (sequencer.getBounds()).expanded (10, 8);
-    g.setColour (colours::panel);
-    g.fillRoundedRectangle (top.toFloat(), 2.0f);
-    g.setColour (colours::border);
-    g.drawRoundedRectangle (top.toFloat().reduced (0.5f), 2.0f, 1.0f);
-    g.fillRect (instruments.getRight() + 8, top.getY() + 10, 1, top.getHeight() - 20);
+    // Plate behind voices + sequencer, held by four screws.
+    const auto top = instruments.getBounds().getUnion (sequencer.getBounds()).expanded (12, 9);
+    drawPanel (g, top, {});
+    g.setColour (colours::borderLight.withAlpha (0.5f));
+    g.fillRect (instruments.getRight() + 9, top.getY() + 14, 1, top.getHeight() - 28);
+    const auto plate = top.toFloat().reduced (7.0f);
+    for (auto corner : { plate.getTopLeft(), plate.getTopRight(), plate.getBottomLeft(), plate.getBottomRight() })
+        drawScrew (g, corner, 3.2f);
 }
 
 void MainComponent::resized()
 {
     auto r = getLocalBounds();
-    header.setBounds (r.removeFromTop (52));
+    header.setBounds (r.removeFromTop (66));
     r.reduce (14, 12);
 
     auto bottom = r.removeFromBottom (300);

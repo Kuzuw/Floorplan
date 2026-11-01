@@ -95,6 +95,12 @@ void Knob::setBarStyle (bool shouldBeBar)
     repaint();
 }
 
+void Knob::setCap (juce::Colour capColour)
+{
+    slider.getProperties().set ("cap", (juce::int64) capColour.getARGB());
+    slider.repaint();
+}
+
 void Knob::resized()
 {
     auto r = getLocalBounds();
@@ -121,8 +127,7 @@ void Knob::paint (juce::Graphics& g)
         if (attachment != nullptr)
         {
             g.setFont (monoFont (11.5f, true));
-            g.setColour (dragging ? colours::accentHot : (slider.isEnabled() ? colours::text : colours::textFaint));
-            g.drawFittedText (slider.getTextFromValue (slider.getValue()), r.removeFromBottom (18),
+            g.setColour (dragging ? colours::accentHot : (slider.isEnabled() ? colours::text : colours::textFaint));            g.drawFittedText (slider.getTextFromValue (slider.getValue()), r.removeFromBottom (18),
                               juce::Justification::centred, 1, 0.6f);
         }
         return;
@@ -201,30 +206,34 @@ void LevelMeter::setLevels (float left, float right)
 
 void LevelMeter::paint (juce::Graphics& g)
 {
+    // Recessed LED column(s): white segments, orange near 0 dB, red at clip.
     auto r = getLocalBounds().toFloat();
-    const float gap = 2.0f;
-    const float barW = (r.getWidth() - gap * (float) (numChannels - 1)) / (float) numChannels;
+    g.setColour (juce::Colours::white.withAlpha (0.5f));
+    g.fillRoundedRectangle (r.translated (0.0f, 1.0f), 2.0f);
+    g.setColour (juce::Colour (0xff1c1b1a));
+    g.fillRoundedRectangle (r, 2.0f);
+
+    const auto inner = r.reduced (1.5f, 2.0f);
+    const float gap = 1.5f;
+    const float barW = (inner.getWidth() - gap * (float) (numChannels - 1)) / (float) numChannels;
+    constexpr float segH = 2.0f, segGap = 1.0f;
+    const int n = juce::jmax (1, (int) ((inner.getHeight() + segGap) / (segH + segGap)));
 
     for (int c = 0; c < numChannels; ++c)
     {
-        auto bar = juce::Rectangle<float> (r.getX() + (float) c * (barW + gap), r.getY(), barW, r.getHeight());
-        g.setColour (colours::well);
-        g.fillRect (bar);
-
-        // Map -48..+6 dB to the bar height.
+        // Map -48..+6 dB to the column height.
         const float db = shown[c] > 0.0f ? juce::Decibels::gainToDecibels (shown[c]) : -100.0f;
         const float norm = juce::jlimit (0.0f, 1.0f, (db + 48.0f) / 54.0f);
-        if (norm > 0.0f)
-        {
-            auto fill = bar.withTop (bar.getBottom() - bar.getHeight() * norm);
-            g.setColour (db > -0.5f ? colours::meterHot : colours::meter.withAlpha (0.85f));
-            g.fillRect (fill);
-        }
+        const int lit = juce::roundToInt (norm * (float) n);
+        const float x = inner.getX() + (float) c * (barW + gap);
 
-        // 0 dB tick
-        const float zeroY = bar.getBottom() - bar.getHeight() * (48.0f / 54.0f);
-        g.setColour (colours::borderLight);
-        g.fillRect (bar.getX(), zeroY, bar.getWidth(), 1.0f);
+        for (int i = 0; i < n; ++i)
+        {
+            const float segNorm = (float) (i + 1) / (float) n;
+            const auto colour = segNorm > 0.95f ? colours::meterHot : (segNorm > 0.82f ? colours::accent : colours::meter);
+            g.setColour (i < lit ? colour : colour.withAlpha (0.08f));
+            g.fillRect (x, inner.getBottom() - (float) (i + 1) * (segH + segGap) + segGap, barW, segH);
+        }
     }
 }
 

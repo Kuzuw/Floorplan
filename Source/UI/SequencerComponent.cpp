@@ -6,7 +6,7 @@ namespace fp::ui
 
 namespace
 {
-constexpr int kRuler = 16;
+constexpr int kRuler = 22; // step numbers + step LEDs
 constexpr int kToolbar = 28;
 
 // Step menu item ID bases (each range is far from the next).
@@ -135,69 +135,62 @@ public:
         const auto& pat = owner.cached;
         const auto& ui = owner.state;
 
-        // Ruler with step numbers; beat starts are brighter.
+        // Ruler: printed step numbers, and one LED per step that acts as the playhead.
         for (int c = 0; c < geom.columns; ++c)
         {
             const int s = geom.first + c;
             const auto r = geom.column (s, 0.0f, (float) kRuler);
             const bool isPlay = s == owner.playStep && owner.playPattern == owner.cachedIndex;
-            g.setColour (isPlay ? colours::accentHot : (s % 4 == 0 ? colours::textDim : colours::textFaint));
-            g.setFont (monoFont (10.5f, s % 4 == 0 || isPlay));
-            g.drawText (geom.inPattern (s) ? juce::String (s + 1) : juce::String(), r, juce::Justification::centred);
+            if (! geom.inPattern (s))
+                continue;
+            g.setColour (isPlay ? colours::accentHot : (s % 4 == 0 ? colours::text : colours::textFaint));
+            g.setFont (font (9.5f, true));
+            g.drawText (juce::String (s + 1), r.withHeight (11.0f), juce::Justification::centred);
+            drawLed (g, { r.getCentreX(), 16.0f }, 2.3f, colours::accent, isPlay ? 1.0f : 0.0f);
         }
 
         for (int v = 0; v < kNumVoices; ++v)
         {
-            const bool selectedRow = v == ui.voice;
-            if (selectedRow)
+            if (v == ui.voice)
             {
-                g.setColour (colours::raised.withAlpha (0.6f));
-                g.fillRect (juce::Rectangle<float> (geom.x0, (float) kRuler + (float) v * rowHeight(),
-                                                    geom.colW * (float) geom.columns, rowHeight()));
+                // Selected track: a shallow recess behind its keys.
+                g.setColour (juce::Colours::black.withAlpha (0.07f));
+                g.fillRoundedRectangle (juce::Rectangle<float> (geom.x0, (float) kRuler + (float) v * rowHeight(),
+                                                                geom.colW * (float) geom.columns, rowHeight()), 4.0f);
             }
 
             for (int c = 0; c < geom.columns; ++c)
                 paintCell (g, v, geom.first + c, pat);
-        }
-
-        // Playhead column overlay.
-        if (owner.playPattern == owner.cachedIndex && owner.playStep >= geom.first && owner.playStep < geom.first + geom.columns)
-        {
-            const auto col = geom.column (owner.playStep, (float) kRuler, (float) getHeight() - (float) kRuler);
-            g.setColour (juce::Colours::white.withAlpha (0.06f));
-            g.fillRect (col);
-            g.setColour (colours::accentHot);
-            g.fillRect (col.withHeight (2.0f).translated (0.0f, -3.0f).reduced (3.0f, 0.0f));
         }
     }
 
     void paintCell (juce::Graphics& g, int v, int s, const Pattern& pat)
     {
         const auto& geom = owner.geo;
-        auto r = cell (v, s).reduced (2.0f, 2.5f);
+        const auto bounds = cell (v, s).reduced (2.5f, 2.0f);
         if (! geom.inPattern (s))
         {
-            g.setColour (colours::well.withAlpha (0.5f));
-            g.fillRect (r);
+            g.setColour (juce::Colours::black.withAlpha (0.06f));
+            g.fillRoundedRectangle (bounds, 3.0f);
             return;
         }
 
+        // Each step is a key: dark when off, latched light when on, orange
+        // when accented. Alternate beat groups use a slightly lighter dark key.
         const auto& st = pat.tracks[(size_t) v].steps[(size_t) s];
         const bool beatGroup = (s / 4) % 2 == 0;
-        g.setColour (beatGroup ? juce::Colour (0xff181816) : juce::Colour (0xff121211));
-        g.fillRect (r);
+        const auto face = st.on ? (st.accent() ? colours::accent : colours::keyLight)
+                                : (beatGroup ? colours::keyDark : colours::keyDark.brighter (0.12f));
+        const auto r = drawKey (g, bounds, face, st.on);
 
         if (st.on)
         {
-            // Bone pad (amber when accented); velocity is the solid height.
+            // Velocity: a printed bar along the bottom of the face.
             const float vel = (float) st.velocity / 127.0f;
-            const auto base = st.accent() ? colours::accentHot : colours::accent;
-            g.setColour (base.withAlpha (0.3f));
-            g.fillRect (r);
-            g.setColour (base);
-            g.fillRect (r.withTop (r.getBottom() - r.getHeight() * (0.3f + 0.7f * vel)));
-
             const auto ink = colours::ink;
+            g.setColour (ink.withAlpha (0.4f));
+            g.fillRect (r.getX() + 3.0f, r.getBottom() - 3.5f, (r.getWidth() - 6.0f) * vel, 1.5f);
+
             // Probability: small pie in the top-left corner.
             if (st.probability < 100)
             {
@@ -238,17 +231,14 @@ public:
         }
         else if (s % 4 == 0)
         {
-            g.setColour (colours::borderLight.withAlpha (0.6f));
-            g.fillRect (juce::Rectangle<float> (3.0f, 3.0f).withCentre (r.getCentre()));
+            g.setColour (colours::keyText.withAlpha (0.3f));
+            g.fillEllipse (juce::Rectangle<float> (3.0f, 3.0f).withCentre (r.getCentre()));
         }
-
-        g.setColour (st.on ? (st.accent() ? colours::accentHot : colours::accent) : colours::border);
-        g.drawRect (r, 1.0f);
 
         if (v == owner.state.voice && s == owner.state.step)
         {
-            g.setColour (colours::accentHot);
-            g.drawRect (r.expanded (1.5f), 1.5f);
+            g.setColour (colours::accent);
+            g.drawRoundedRectangle (bounds.expanded (1.5f), 4.5f, 1.5f);
         }
     }
 
@@ -396,19 +386,17 @@ public:
         const auto& geom = owner.geo;
         const int mode = owner.laneMode;
         const auto range = kLaneRanges[mode];
+        // The lane is a wide display window; the glass is inset by its bezel,
+        // so values map onto the same vertical range used for editing.
         const auto bounds = getLocalBounds().toFloat();
-
-        g.setColour (colours::well);
-        g.fillRect (bounds);
-        g.setColour (colours::border);
-        g.drawRect (bounds, 1.0f);
+        drawLcd (g, bounds);
 
         const float h = bounds.getHeight() - 6.0f;
         const float zeroY = range.bipolar ? bounds.getY() + 3.0f + h * 0.5f : bounds.getBottom() - 3.0f;
         if (range.bipolar)
         {
-            g.setColour (colours::border);
-            g.fillRect (bounds.getX(), zeroY, bounds.getWidth(), 1.0f);
+            g.setColour (colours::lcdDim.withAlpha (0.5f));
+            g.fillRect (bounds.getX() + 4.0f, zeroY, bounds.getWidth() - 8.0f, 1.0f);
         }
 
         const auto& track = owner.cached.tracks[(size_t) owner.state.voice];
@@ -434,12 +422,12 @@ public:
                 bar = col.withTop (col.getBottom() - juce::jmax (2.0f, h * norm));
             }
 
-            g.setColour (st.on ? colours::accent.withAlpha (s == owner.state.step ? 1.0f : 0.8f) : colours::textFaint.withAlpha (0.18f));
-            g.fillRect (bar);
+            g.setColour (! st.on ? colours::lcdGhost : (s == owner.state.step ? colours::accent : colours::lcdText));
+            g.fillRect (bar.getIntersection (bounds.reduced (4.0f)));
 
             if (s == hoverStep)
             {
-                g.setColour (colours::text);
+                g.setColour (colours::lcdText);
                 g.setFont (font (10.5f, true));
                 g.drawText (laneText (mode, value), col.withHeight (14.0f), juce::Justification::centred);
             }
@@ -501,6 +489,7 @@ SequencerComponent::SequencerComponent (FloorplanProcessor& p, UiState& s) : pro
     for (int i = 0; i < kNumPatterns; ++i)
     {
         auto* b = patternButtons.add (new juce::TextButton (juce::String (i + 1)));
+        setKeyStyle (*b, KeyStyle::dark);
         b->setTooltip ("Pattern " + juce::String (i + 1) + " (switches at the end of the current cycle while playing)");
         b->onClick = [this, i] { setEditPattern (i); };
         addAndMakeVisible (b);
@@ -618,7 +607,7 @@ void SequencerComponent::updateToolbar()
         b->setToggleState (i == cachedIndex, juce::dontSendNotification);
         const bool playing = i == playPattern && proc.isTransportRunning();
         b->setColour (juce::TextButton::textColourOffId,
-                      playing ? colours::accentHot : (bank.patterns[(size_t) i].isEmpty() ? colours::textFaint : colours::text));
+                      playing ? colours::accent : (bank.patterns[(size_t) i].isEmpty() ? colours::lcdDim : colours::keyText));
     }
 
     for (int i = 0; i < (int) kLengthChoices.size(); ++i)
