@@ -6,6 +6,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-01
+
 ### Added
 
 - Six Advanced parameters for the closed hat, open hat and cymbal, all automatable:
@@ -100,6 +102,7 @@ First public release.
 - Only tune and decay can be locked per step.
 - All tracks in a pattern share one length.
 
-[Unreleased]: https://github.com/Kuzuw/Floorplan/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/Kuzuw/Floorplan/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/Kuzuw/Floorplan/releases/tag/v0.1.2
 [0.1.1]: https://github.com/Kuzuw/Floorplan/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Kuzuw/Floorplan/releases/tag/v0.1.0
