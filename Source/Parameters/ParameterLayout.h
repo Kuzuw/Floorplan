@@ -25,6 +25,7 @@ public:
 
     float tempo() const noexcept      { return tempoParam->load (std::memory_order_relaxed); }
     bool midiOutEnabled() const noexcept { return midiOutParam->load (std::memory_order_relaxed) > 0.5f; }
+    bool sequencerEnabled() const noexcept { return seqOnParam->load (std::memory_order_relaxed) > 0.5f; }
 
 private:
     struct VoicePtrs
@@ -55,6 +56,7 @@ private:
     std::atomic<float>* tempoParam = nullptr;
     std::atomic<float>* seed = nullptr;
     std::atomic<float>* midiOutParam = nullptr;
+    std::atomic<float>* seqOnParam = nullptr;
 };
 
 } // namespace fp

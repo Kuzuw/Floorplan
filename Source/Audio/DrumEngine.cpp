@@ -102,6 +102,12 @@ void DrumEngine::reset()
     peakL = peakR = 0.0f;
 }
 
+void DrumEngine::chokeAll() noexcept
+{
+    for (auto& s : synths) s->choke();
+    for (auto& s : samplers) s.choke();
+}
+
 float DrumEngine::velocityToGain (float velocity, bool accent, float accentAmount) noexcept
 {
     velocity = std::clamp (velocity, 0.0f, 1.0f);

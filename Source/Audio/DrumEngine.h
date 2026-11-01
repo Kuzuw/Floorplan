@@ -79,6 +79,9 @@ public:
     VoiceParams& voiceParams (int v) noexcept { return voiceSettings[(size_t) v]; }
     MasterParams& masterParams() noexcept { return master; }
     void setSample (int v, const SampleData* s) noexcept { samplers[(size_t) v].setSample (s); }
+
+    // Fades out every sounding voice within a few milliseconds (MIDI All Sound Off).
+    void chokeAll() noexcept;
     bool voiceUsesSample (int v) const noexcept { return samplers[(size_t) v].hasSample(); }
 
     // events: sorted by offset, offsets in [0, numSamples).

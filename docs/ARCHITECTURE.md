@@ -59,10 +59,12 @@ computes its curves from the same formulas as its DSP (kick, snare, hats,
 cymbal, perc, tom) or runs its own envelope code (the clap's `ClapEnvelope`).
 
 `ParameterLayout.cpp` turns the table into an `AudioProcessorValueTreeState`
-layout of 185 parameters. The extras sit in a last "Advanced" group, so adding
-them never moves an existing parameter's index. Within that group they are
-ordered by `extrasGeneration()`: each new batch of extras goes after the ones
-already released, even when it belongs to a voice listed earlier. `ParameterCache` resolves every parameter's raw
+layout of 186 parameters. The extras sit in an "Advanced" group after all the
+original parameters, so adding them never moves an existing parameter's index.
+Within that group they are ordered by `extrasGeneration()`: each new batch of
+extras goes after the ones already released, even when it belongs to a voice
+listed earlier. Parameters added later still (*Sequencer On*) go in an
+"Options" group at the very end. `ParameterCache` resolves every parameter's raw
 `std::atomic<float>*` once at construction, so the audio thread reads plain
 atomics and never looks anything up by string.
 
@@ -98,8 +100,14 @@ Design rules for voices:
 `DrumEngine::process` renders one block:
 
 1. Events (already sorted by sample offset) split the block into sub-blocks; each event triggers its voice exactly at its offset.
-2. Each active voice renders into a scratch buffer, then goes through its strip: **drive → bipolar filter → level/pan ramps → bus**. The bus is the main mix or one of eight aux outputs. Output routing falls back to the main mix when the host has the aux bus disabled.
+2. Each active voice renders into a scratch buffer, then goes through its strip: **drive → bipolar filter → level/pan ramps → bus**. The bus is the main mix or one of eight aux outputs. Output routing falls back to the main mix when the host has the aux bus disabled. The aux buses are active by default (so every host lists them) and stay silent until a voice's Output parameter selects one.
 3. The master chain runs: **volume ramp → compressor → soft clip**, followed by peak metering.
+
+`chokeAll()` fades out every voice (MIDI All Sound Off). After the engine, the
+processor checks the output's bit patterns for NaN or infinity: every main-bus
+sample and the last sample of every other channel. If it finds one, it resets
+the engine and mutes that block. The check uses bit patterns because fast-math
+can optimise `std::isfinite` away.
 
 All buffers are sized in `prepare()`. If a host sends a block larger than it
 announced, the engine processes it in chunks rather than allocating.
@@ -155,7 +163,7 @@ Everything reachable from `processBlock`:
 There are two narrow exceptions, both outside normal operation:
 
 1. `juce::MidiBuffer::addEvent` (MIDI output only) can allocate if the host hands over a MIDI buffer with too little reserved capacity. Most hosts pre-allocate. The MIDI output is off by default.
-2. If a host violates its own announced maximum block size, the mono fallback buffer is resized once. Normal hosts never do this.
+2. If a host violates its own announced maximum block size and also gives the main bus only one channel, the mono fallback buffer is resized once. Normal hosts never do this.
 
 ## Timing model
 
@@ -172,7 +180,19 @@ block length) from either the host play head or the internal clock.
 
 Events from the sequencer, MIDI input and GUI auditions are merged and
 insertion-sorted by offset, which is cheap for the small, nearly sorted lists
-involved, before going to the engine.
+involved, before going to the engine. A sequencer event within 2 ms of a MIDI
+or GUI event for the same voice is dropped, and the live event keeps the higher
+velocity. This way a clip recorded from the MIDI output and played along with
+the pattern does not double the hits. The **Sequencer On** parameter takes the
+sequencer out entirely.
+
+**Transport source** (`readTransport`): a host that is playing always drives
+the sequencer, and the moment it starts, it ends a preview started with the
+editor's PLAY button. Otherwise the internal clock runs while the preview is
+on, at the host's tempo when there is a play head, or at *Internal Tempo* in
+the Standalone app. A non-finite or non-positive tempo, or a non-finite
+position, counts as missing. Floorplan then falls back to its last valid tempo
+and counts samples itself.
 
 ## State and versioning
 
@@ -189,7 +209,8 @@ involved, before going to the engine.
 
 - Unknown elements are ignored. A parameter missing from the saved state is set to its default (not left at its current value), so newer and older versions degrade gracefully.
 - `stateVersion` is bumped whenever the meaning of saved data changes. `setStateInformation` then migrates. Version 0 (a bare APVTS tree from early builds) is still accepted.
-- Samples are stored by path only. A missing file is flagged in the UI and the voice falls back to synthesis, so a project always loads.
+- Samples are stored by path only. If the path no longer exists, `findMissingSample` searches `Documents/Floorplan/Samples` recursively for the same file name, accepting either path separator. A file that is still missing is flagged in the UI, the voice falls back to synthesis, and the saved path is kept, so a project always loads and never loses the reference.
+- MIDI output note-offs remember their note number, so a note-map change while a note is held cannot leave it hanging.
 
 ## Adding a voice parameter or a new voice
 

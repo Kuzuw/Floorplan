@@ -1,4 +1,4 @@
-﻿#include "PluginProcessor.h"
+#include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "Parameters/ParameterIDs.h"
 #include "Presets/PatternSerializer.h"
@@ -11,12 +11,15 @@ juce::AudioProcessor::BusesProperties FloorplanProcessor::makeBuses()
     auto buses = BusesProperties()
                      .withOutput ("Main", juce::AudioChannelSet::stereo(), true);
 
-    // Optional per-voice outputs for multi-out routing in a DAW. The shared
+    // Per-voice outputs for multi-out routing in a DAW. They are active by
+    // default, so hosts that only offer default-active buses (or never activate
+    // any) still list them. Every voice plays through Main until its Output
+    // parameter picks one of these, so they are silent unless used. The shared
     // code is compiled once for all formats, so check the wrapper at runtime.
     if (juce::PluginHostType::getPluginLoadedAs() != juce::AudioProcessor::wrapperType_Standalone)
         for (int v = 0; v < kNumVoices; ++v)
             buses = buses.withOutput (juce::String ("Out ") + juce::String (v + 2) + " (" + kVoiceSpecs[(size_t) v].name + ")",
-                                      juce::AudioChannelSet::stereo(), false);
+                                      juce::AudioChannelSet::stereo(), true);
     return buses;
 }
 
@@ -50,7 +53,6 @@ FloorplanProcessor::FloorplanProcessor()
     paramList = getParameters();
     resetVoiceNotes();
     for (auto& c : ccToParam) c.store (-1);
-    pendingNoteOff.fill (-1);
     startTimerHz (20);
 }
 
@@ -69,7 +71,8 @@ void FloorplanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     sequencer.prepare (sampleRate);
     loadMeasurer.reset (sampleRate, block);
     monoFallback.setSize (1, block);
-    pendingNoteOff.fill (-1);
+    pendingNoteOff.fill ({});
+    hostWasPlaying = false;
 }
 
 bool FloorplanProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -102,11 +105,18 @@ TransportState FloorplanProcessor::readTransport (int numSamples)
     {
         if (auto pos = head->getPosition())
         {
+            // Values a host cannot mean (no tempo, NaN) count as missing.
             hostPlaying = pos->getIsPlaying();
-            if (auto b = pos->getBpm()) bpm = *b;
-            if (auto p = pos->getPpqPosition()) hostPpq = *p;
+            if (auto b = pos->getBpm(); b && std::isfinite (*b) && *b >= 1.0) bpm = *b;
+            if (auto p = pos->getPpqPosition(); p && std::isfinite (*p)) hostPpq = *p;
         }
     }
+
+    // The host's play button ends a preview started from the editor, so the
+    // internal clock never runs alongside the host or resumes when it stops.
+    if (hostPlaying && ! hostWasPlaying)
+        internalPlay.store (false, std::memory_order_relaxed);
+    hostWasPlaying = hostPlaying;
 
     if (hostPlaying)
     {
@@ -121,8 +131,10 @@ TransportState FloorplanProcessor::readTransport (int numSamples)
     }
     else if (internalPlay.load (std::memory_order_relaxed))
     {
+        // Preview: in a host it keeps the host's tempo, so the pattern sounds
+        // the same when the host starts. The Standalone app uses its own tempo.
         t.playing = true;
-        t.bpm = params.tempo();
+        t.bpm = getPlayHead() != nullptr ? bpm : params.tempo();
         t.ppq = internalPpq;
         internalPpq += numSamples * t.bpm / (60.0 * getSampleRate());
         uiHostSync.store (false, std::memory_order_relaxed);
@@ -174,8 +186,15 @@ void FloorplanProcessor::handleMidiInput (const juce::MidiBuffer& midi, int numS
                 e.velocity = msg.getFloatVelocity();
             }
         }
-        else if (msg.isController())
+        else if (msg.isAllSoundOff())
         {
+            engine.chokeAll();
+        }
+        else if (msg.isController() && msg.getControllerNumber() < 120)
+        {
+            // Channel mode messages (120-127) are never learned or mapped. All
+            // Notes Off needs no action: every voice is a one-shot that ignores
+            // note-offs, so no note can hang.
             const int cc = msg.getControllerNumber();
             const int learn = learnParam.exchange (-1);
             if (learn >= 0)
@@ -196,19 +215,18 @@ void FloorplanProcessor::writeMidiOutput (juce::MidiBuffer& midi, const TriggerE
     midi.clear(); // keeps its allocated storage
 
     // Note-offs scheduled by earlier blocks.
-    for (int v = 0; v < kNumVoices; ++v)
+    for (auto& pending : pendingNoteOff)
     {
-        int& left = pendingNoteOff[(size_t) v];
-        if (left < 0)
+        if (pending.samplesLeft < 0)
             continue;
-        if (left < numSamples)
+        if (pending.samplesLeft < numSamples)
         {
-            midi.addEvent (juce::MidiMessage::noteOff (kMidiOutChannel, voiceNotes[(size_t) v].load()), left);
-            left = -1;
+            midi.addEvent (juce::MidiMessage::noteOff (kMidiOutChannel, pending.note), pending.samplesLeft);
+            pending.samplesLeft = -1;
         }
         else
         {
-            left -= numSamples;
+            pending.samplesLeft -= numSamples;
         }
     }
 
@@ -220,9 +238,9 @@ void FloorplanProcessor::writeMidiOutput (juce::MidiBuffer& midi, const TriggerE
     {
         const auto& e = seqEvents[i];
         const int note = voiceNotes[(size_t) e.voice].load();
-        int& pending = pendingNoteOff[(size_t) e.voice];
-        if (pending >= 0)
-            midi.addEvent (juce::MidiMessage::noteOff (kMidiOutChannel, note), e.offset);
+        auto& pending = pendingNoteOff[(size_t) e.voice];
+        if (pending.samplesLeft >= 0)
+            midi.addEvent (juce::MidiMessage::noteOff (kMidiOutChannel, pending.note), e.offset);
 
         const auto vel = (juce::uint8) juce::jlimit (1, 127, juce::roundToInt (e.velocity * 127.0f) + (e.accent ? 10 : 0));
         midi.addEvent (juce::MidiMessage::noteOn (kMidiOutChannel, note, vel), e.offset);
@@ -231,11 +249,11 @@ void FloorplanProcessor::writeMidiOutput (juce::MidiBuffer& midi, const TriggerE
         if (offAt < numSamples)
         {
             midi.addEvent (juce::MidiMessage::noteOff (kMidiOutChannel, note), offAt);
-            pending = -1;
+            pending.samplesLeft = -1;
         }
         else
         {
-            pending = offAt - numSamples;
+            pending = { offAt - numSamples, note };
         }
     }
 }
@@ -270,12 +288,13 @@ void FloorplanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
             eventScratch[(size_t) count++] = triggerQueue[(size_t) (scope.startIndex2 + i)];
     }
 
-    // 3. Sequencer.
+    // 3. Sequencer (unless switched off: then only MIDI and the pads play).
+    TransportState seqTransport = transport;
+    seqTransport.playing = transport.playing && params.sequencerEnabled();
     const PatternBank& bank = patterns.acquireForAudio();
-    const int seqCount = sequencer.process (bank, transport, seqSettings, numSamples,
+    const int seqCount = sequencer.process (bank, seqTransport, seqSettings, numSamples,
                                             seqScratch.data(), (int) seqScratch.size());
-    for (int i = 0; i < seqCount && count < (int) eventScratch.size(); ++i)
-        eventScratch[(size_t) count++] = seqScratch[(size_t) i];
+    count = mergeSequencerEvents (count, seqCount);
 
     // Merge into one time-ordered list (stable insertion sort).
     for (int i = 1; i < count; ++i)
@@ -328,13 +347,77 @@ void FloorplanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     for (int ch = 2; ch < mainBus.getNumChannels(); ++ch)
         mainBus.clear (ch, 0, numSamples);
 
+    // Never hand the host NaN or infinity. A voice that blew up is reset and
+    // the block is muted; the next hits play normally.
+    if (! outputIsFinite (buffer, numSamples))
+    {
+        engine.reset();
+        buffer.clear();
+    }
+
     uiStep.store (sequencer.currentStep(), std::memory_order_relaxed);
     uiPattern.store (sequencer.currentPattern(), std::memory_order_relaxed);
-    uiPlaying.store (transport.playing, std::memory_order_relaxed);
+    uiPlaying.store (seqTransport.playing, std::memory_order_relaxed);
     for (int v = 0; v < kNumVoices; ++v)
         uiVoicePeaks[(size_t) v].store (engine.voicePeak (v), std::memory_order_relaxed);
     uiMasterPeaks[0].store (engine.masterPeakL(), std::memory_order_relaxed);
     uiMasterPeaks[1].store (engine.masterPeakR(), std::memory_order_relaxed);
+}
+
+// Appends the sequencer's events after the live ones (MIDI input and pads in
+// eventScratch[0, liveCount)). A sequencer hit with a live hit on the same
+// voice within kDuplicateWindowSeconds is dropped and the live hit keeps the
+// louder of the two, so a MIDI clip recorded from the sequencer (or played
+// along with it) does not double every hit. Returns the new event count.
+int FloorplanProcessor::mergeSequencerEvents (int liveCount, int seqCount) noexcept
+{
+    const int window = (int) (kDuplicateWindowSeconds * getSampleRate());
+    int count = liveCount;
+
+    for (int i = 0; i < seqCount && count < (int) eventScratch.size(); ++i)
+    {
+        const auto& s = seqScratch[(size_t) i];
+        bool duplicate = false;
+        for (int j = 0; j < liveCount && ! duplicate; ++j)
+        {
+            auto& live = eventScratch[(size_t) j];
+            if (live.voice == s.voice && std::abs (live.offset - s.offset) <= window)
+            {
+                duplicate = true;
+                live.velocity = juce::jmax (live.velocity, s.velocity);
+                live.accent = live.accent || s.accent;
+            }
+        }
+
+        if (! duplicate)
+            eventScratch[(size_t) count++] = s;
+    }
+    return count;
+}
+
+// Checks every main-bus sample and the last sample of each other channel: a
+// voice whose state turns non-finite stays that way, so one sample per block
+// is enough there. Uses the bit pattern, which fast-math cannot optimise away.
+bool FloorplanProcessor::outputIsFinite (juce::AudioBuffer<float>& buffer, int numSamples) const noexcept
+{
+    auto finite = [] (float x) noexcept
+    {
+        uint32_t bits;
+        std::memcpy (&bits, &x, sizeof (bits));
+        return (bits & 0x7F800000u) != 0x7F800000u;
+    };
+
+    bool ok = true;
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+    {
+        const float* data = buffer.getReadPointer (ch);
+        if (ch < 2)
+            for (int i = 0; i < numSamples; ++i)
+                ok = ok && finite (data[i]);
+        else
+            ok = ok && finite (data[numSamples - 1]);
+    }
+    return ok;
 }
 
 // ---------------------------------------------------------------------------
@@ -553,11 +636,36 @@ void FloorplanProcessor::setStateInformation (const void* data, int sizeInBytes)
             continue;
         }
 
+        // A moved project or a different machine: look for the file by name
+        // in the samples folder. If it is still not found, the saved path is
+        // kept, so saving again does not lose the reference.
+        const juce::File found = findMissingSample (path);
         juce::String error;
-        auto loaded = sampleLoader.load (juce::File (path), error);
+        auto loaded = found != juce::File() ? sampleLoader.load (found, error) : nullptr;
         const bool missing = loaded == nullptr;
-        applySampleOnMessageThread (v, std::move (loaded), path, missing);
+        applySampleOnMessageThread (v, std::move (loaded), missing ? path : found.getFullPathName(), missing);
     }
+}
+
+juce::File FloorplanProcessor::getDefaultSampleFolder()
+{
+    return PresetManager::getUserFolder().getSiblingFile ("Samples");
+}
+
+juce::File FloorplanProcessor::findMissingSample (const juce::String& savedPath) const
+{
+    if (juce::File::isAbsolutePath (savedPath) && juce::File (savedPath).existsAsFile())
+        return juce::File (savedPath);
+
+    // Saved on another OS, the path may use the other separator.
+    const auto name = savedPath.fromLastOccurrenceOf ("/", false, false).fromLastOccurrenceOf ("\\", false, false);
+    if (name.isEmpty() || ! sampleSearchFolder.isDirectory())
+        return {};
+
+    for (const auto& entry : juce::RangedDirectoryIterator (sampleSearchFolder, true, "*", juce::File::findFiles))
+        if (entry.getFile().getFileName().equalsIgnoreCase (name))
+            return entry.getFile();
+    return {};
 }
 
 juce::AudioProcessorEditor* FloorplanProcessor::createEditor()

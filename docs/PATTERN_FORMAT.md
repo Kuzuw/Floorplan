@@ -5,8 +5,8 @@ edit them by hand, or generate them from scripts.
 
 | Extension | Content | Menu |
 | --- | --- | --- |
-| `.fppattern` | One pattern | *MENU → Import pattern… / Export pattern…* |
-| `.fpbank` | All 16 pattern slots | *MENU → Import bank… / Export bank…* |
+| `.fppattern` | One pattern | *SETTINGS → Import pattern… / Export pattern…* |
+| `.fpbank` | All 16 pattern slots | *SETTINGS → Import bank… / Export bank…* |
 
 Files are UTF-8 JSON. The current format version is **1**.
 

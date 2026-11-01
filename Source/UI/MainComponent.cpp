@@ -298,8 +298,12 @@ void MainComponent::showSettingsMenu()
     kitMenu.addItem (22, "Rescan user kits");
 
     const bool midiOut = proc.apvts.getRawParameterValue (ids::midiOut)->load() > 0.5f;
+    const bool seqOn = proc.apvts.getRawParameterValue (ids::sequencerOn)->load() > 0.5f;
 
     juce::PopupMenu menu;
+    menu.addSectionHeader ("SEQUENCER");
+    menu.addItem (12, "Internal sequencer on (off: only MIDI input and the pads play)", true, seqOn);
+    menu.addSeparator();
     menu.addSectionHeader ("PATTERNS");
     menu.addSubMenu ("Load factory pattern into current slot", factoryPatterns);
     menu.addItem (1, "Import pattern...");
@@ -309,10 +313,16 @@ void MainComponent::showSettingsMenu()
     menu.addSeparator();
     menu.addSectionHeader ("KITS");
     menu.addSubMenu ("Kit files", kitMenu);
+    menu.addItem (23, "Open samples folder (missing samples are searched here)");
     menu.addSeparator();
     menu.addSectionHeader ("MIDI");
+    menu.addItem (13, "MIDI note map...");
     menu.addItem (10, "Send sequencer notes to MIDI output", true, midiOut);
     menu.addItem (11, "Reset MIDI note map to defaults (GM)");
+    menu.addSeparator();
+    menu.addSectionHeader ("OUTPUTS");
+    menu.addItem (14, "Each instrument to its own output (Out 2-9)");
+    menu.addItem (15, "All instruments to the main output");
     menu.addSeparator();
     menu.addItem (30, "Keyboard shortcuts...");
     menu.addItem (31, "About Floorplan " FLOORPLAN_VERSION_STRING);
@@ -342,6 +352,43 @@ void MainComponent::showSettingsMenu()
                     p->setValueNotifyingHost (p->getValue() > 0.5f ? 0.0f : 1.0f);
                 break;
             case 11: self.proc.resetVoiceNotes(); break;
+            case 12:
+                if (auto* p = self.proc.apvts.getParameter (ids::sequencerOn))
+                {
+                    p->beginChangeGesture();
+                    p->setValueNotifyingHost (p->getValue() > 0.5f ? 0.0f : 1.0f);
+                    p->endChangeGesture();
+                }
+                break;
+            case 13:
+            {
+                // Octave names differ between hosts: Ableton calls note 60 C3, FL Studio C5.
+                juce::String text ("Note numbers, with their names in Ableton Live / FL Studio.\n"
+                                   "Right-click an instrument to learn a different note.\n\n");
+                for (int v = 0; v < kNumVoices; ++v)
+                {
+                    const int n = self.proc.getVoiceNote (v);
+                    text << kVoiceSpecs[(size_t) v].name << ":   " << n << "   "
+                         << juce::MidiMessage::getMidiNoteName (n, true, true, 3) << " / "
+                         << juce::MidiMessage::getMidiNoteName (n, true, true, 5) << "\n";
+                }
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "MIDI note map", text);
+                break;
+            }
+            case 14:
+            case 15:
+                for (int v = 0; v < kNumVoices; ++v)
+                    if (auto* p = self.proc.apvts.getParameter (ids::output (v)))
+                    {
+                        p->beginChangeGesture();
+                        p->setValueNotifyingHost (p->convertTo0to1 (r == 14 ? (float) (v + 1) : 0.0f));
+                        p->endChangeGesture();
+                    }
+                break;
+            case 23:
+                FloorplanProcessor::getDefaultSampleFolder().createDirectory();
+                FloorplanProcessor::getDefaultSampleFolder().startAsProcess();
+                break;
             case 20:
             {
                 self.chooser = std::make_unique<juce::FileChooser> ("Load kit", PresetManager::getUserFolder(), "*.fpkit");

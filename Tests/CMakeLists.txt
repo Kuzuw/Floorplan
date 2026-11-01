@@ -87,9 +87,19 @@ if(TARGET Floorplan)
         pattern_json_rejects_garbage
         factory_presets_load
         bus_layouts
+        multi_output_routing_in_every_layout
         parameters_are_automatable
         advanced_parameters_keep_existing_indices
-        old_state_sets_new_parameters_to_default)
+        old_state_sets_new_parameters_to_default
+        midi_note_map_and_velocity
+        all_sound_off_silences_and_all_notes_off_does_not
+        host_play_ends_the_preview
+        invalid_host_timing_is_safe
+        sequencer_can_be_switched_off
+        midi_and_sequencer_do_not_double
+        automation_fast_and_slow_reaches_the_engine
+        missing_sample_is_found_by_name
+        any_block_size_and_sample_rate_keeps_time)
 
     foreach(test_name IN LISTS FLOORPLAN_PLUGIN_TESTS)
         add_test(NAME plugin.${test_name} COMMAND floorplan_plugin_tests ${test_name})

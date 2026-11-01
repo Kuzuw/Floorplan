@@ -22,6 +22,7 @@ inline const juce::String tempo        { "tempo" };
 inline const juce::String randAmount   { "rand_amount" };
 inline const juce::String seed         { "prob_seed" };
 inline const juce::String midiOut      { "midi_out" };
+inline const juce::String sequencerOn  { "seq_on" };
 
 inline juce::String chainSlot (int slot) { return "chain_" + juce::String (slot + 1); }
 

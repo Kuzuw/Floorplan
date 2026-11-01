@@ -245,7 +245,8 @@ void SoundDesignComponent::layoutControls (juce::Rectangle<int> area, const std:
     auto row = area.withHeight (juce::jmin (area.getHeight(), kKnobRowHeight));
     for (auto* c : controls)
     {
-        auto cell = row.removeFromLeft (dynamic_cast<juce::ComboBox*> (c) != nullptr ? 128 : cellW);
+        // Wide enough for "Out 4 (Closed Hat)".
+        auto cell = row.removeFromLeft (dynamic_cast<juce::ComboBox*> (c) != nullptr ? 176 : cellW);
         if (dynamic_cast<juce::ComboBox*> (c) != nullptr)
             c->setBounds (cell.withSizeKeepingCentre (cell.getWidth() - 12, 26).translated (0, 4));
         else

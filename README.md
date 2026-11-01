@@ -43,7 +43,7 @@
 - **Built for dance music.** Four-on-the-floor defaults, swing and groove templates, offbeat open hats with closed-hat choke, ratchets, flams, probability and per-step parameter locks.
 - **Tight timing.** The sequencer follows the host play head with sample-accurate events, handles tempo changes, loops and transport jumps, and never uses a wall-clock timer.
 - **Very light.** About 0.3% of one laptop core for a typical groove. Idle voices cost nothing, and the audio thread never allocates, locks or touches the disk.
-- **Production-ready plumbing.** 185 automatable parameters, versioned project state, kit presets, a documented JSON pattern format, MIDI learn and optional per-voice outputs.
+- **Production-ready plumbing.** 186 automatable parameters, versioned project state, kit presets, a documented JSON pattern format, MIDI learn and optional per-voice outputs. One standard VST3 for every host; see [using it in FL Studio and Ableton Live](docs/HOSTS.md).
 - **Hackable.** The DSP and sequencer core is plain C++17 with no JUCE dependency, so you can unit-test and benchmark it in isolation. A new voice is one table entry plus one class.
 
 ## Sounds
@@ -166,6 +166,8 @@ To install from a zip or a build of your own, copy `Floorplan.vst3` to your VST3
 | Windows | `C:\Program Files\Common Files\VST3\` |
 | macOS | `/Library/Audio/Plug-Ins/VST3/` or `~/Library/Audio/Plug-Ins/VST3/` |
 
+For a build of your own on Windows, `scripts\install-vst3.ps1` (run from an administrator PowerShell) does the copy. Rescanning in FL Studio and Ableton Live, and troubleshooting, are in [docs/HOSTS.md](docs/HOSTS.md#installing).
+
 The Standalone app runs from anywhere. Pick your audio/MIDI device under *Options → Audio/MIDI Settings*.
 
 To build the installers yourself after a Release build: on Windows, `iscc /DAppVersion=<version> packaging\windows\Floorplan.iss` ([Inno Setup 6](https://jrsoftware.org/isinfo.php)); on macOS, `packaging/macos/build-pkg.sh <version>`. Both write to `dist/`.
@@ -180,7 +182,7 @@ To build the installers yourself after a Release build: on Windows, `iscc /DAppV
 4. Shape the sound in the **sound panel**. The waveform preview is rendered by the real voice DSP; click it to audition.
 5. Add swing, choose a groove template, chain patterns, and mix with the faders.
 
-In a DAW, Floorplan follows the host transport. Without one (the Standalone app, or a stopped host) press **PLAY** or `Space` to run the internal clock at the tempo shown in the header.
+In a DAW, the sequencer follows the host transport, with no MIDI clips needed. With the host stopped, **PLAY** or `Space` previews the pattern at the host's tempo; pressing play in the host ends the preview and the host takes over. In the Standalone app, **PLAY** runs the internal clock at the tempo shown in the header. *SETTINGS → Internal sequencer on* switches the sequencer off, for when you only play Floorplan from MIDI. Details for FL Studio and Ableton Live are in [docs/HOSTS.md](docs/HOSTS.md).
 
 ### Shortcuts
 
@@ -196,7 +198,7 @@ In a DAW, Floorplan follows the host transport. Without one (the Standalone app,
 
 ### MIDI
 
-Default note map (General MIDI drums). Change any of them with *right-click instrument → Learn MIDI note*.
+Default note map (General MIDI drums). Change any of them with *right-click instrument → Learn MIDI note*. Note names follow Ableton Live (C3 = 60); FL Studio names the same notes two octaves higher (C5 = 60), so the kick is *C3* there. *SETTINGS → MIDI note map* shows both.
 
 | Voice | Note | | Voice | Note |
 | --- | --- | --- | --- | --- |
@@ -205,14 +207,16 @@ Default note map (General MIDI drums). Change any of them with *right-click inst
 | Closed Hat | F#1 (42) | | Low Tom | F1 (41) |
 | Open Hat | A#1 (46) | | Cymbal | C#2 (49) |
 
+Voices are one-shots: note length does not matter and note-offs are ignored, so notes cannot hang. MIDI and the sequencer can play together; a MIDI hit within 2 ms of a sequencer hit on the same drum replaces it instead of doubling it.
+
 Any knob can be mapped to a MIDI CC with right-click → *MIDI Learn*. Mappings are saved with the project.
 
 ### Samples, kits, patterns
 
-- **Samples:** drag a WAV/AIFF/FLAC/Ogg file onto an instrument, or use *Load sample* in the sound panel. Projects store only the file path, never the audio. A missing file is flagged and the voice falls back to synthesis.
+- **Samples:** drag a WAV/AIFF/FLAC/Ogg file onto an instrument, or use *Load sample* in the sound panel. Projects store only the file path, never the audio. If the file has moved, Floorplan looks for the same file name under `Documents/Floorplan/Samples`. A file that is still missing is flagged and the voice falls back to synthesis.
 - **Kits** (sound presets) live in `Documents/Floorplan/Kits/*.fpkit`. Kits never touch your patterns.
 - **Patterns** export and import as JSON (`.fppattern`, `.fpbank`). See the [pattern format](docs/PATTERN_FORMAT.md).
-- **Multi-out:** pick *Out 2–9* in a voice's OUTPUT box and enable the matching output bus in your DAW. If that bus is disabled, the voice plays through the main mix.
+- **Multi-out:** *SETTINGS → Each instrument to its own output* sends each voice to *Out 2 (Kick)* … *Out 9 (Cymbal)*, or pick an output per voice in the Advanced OUTPUT tab. The outputs are active by default; route them in your DAW ([how](docs/HOSTS.md#separate-outputs)). If the host disables an output, its voice plays through the main mix.
 
 ## Project layout
 
@@ -228,8 +232,9 @@ Source/
   PluginProcessor / PluginEditor
 Tests/          Core tests (no JUCE) and plugin tests (processor, state, presets)
 Benchmarks/     floorplan_bench
-docs/           Architecture, pattern format, DAW test plan, roadmap, dev log
+docs/           Architecture, host guide (FL Studio, Ableton Live), pattern format, DAW test plan, roadmap, dev log
 packaging/      Windows installer (Inno Setup) and macOS installer package scripts
+scripts/        install-vst3.ps1 (copy a local build to the Windows VST3 folder)
 ```
 
 How the pieces fit, the threading model and how to add a voice are in **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
@@ -240,9 +245,19 @@ How the pieces fit, the threading model and how to add a voice are in **[docs/AR
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-There are 43 automated tests. They cover oscillator and envelope accuracy, every voice's output (finite, audible, decays to silence), parameter bounds, extreme settings and random fuzzing (no NaN/Inf), sample-accurate step timing, block-size invariance, swing, micro timing, probability statistics and determinism, ratchets and flams, host loops, start/stop mid-pattern, tempo changes, pattern switching and chaining, the triple buffer under concurrency, state save/restore, legacy state migration, JSON import robustness, factory kits, bus layouts and automation.
+There are 73 automated tests. They cover oscillator and envelope accuracy, every voice's output (finite, audible, decays to silence), parameter bounds, extreme settings and random fuzzing (no NaN/Inf), sample-accurate step timing, block-size invariance, swing, micro timing, probability statistics and determinism, ratchets and flams, host loops, start/stop mid-pattern, tempo changes, pattern switching and chaining, the triple buffer under concurrency, state save/restore, legacy state migration, JSON import robustness, factory kits, bus layouts and automation.
 
-DAW compatibility has **not** been verified by the maintainers yet. [docs/DAW_TESTING.md](docs/DAW_TESTING.md) has a step-by-step checklist; reports from different hosts are very welcome.
+Plugin-level tests drive the processor with a simulated host. They cover:
+
+- MIDI note mapping, velocity, note-offs, overlapping notes and All Sound Off;
+- preview and host transport hand-over, and nonsense host timing;
+- block sizes from 1 to 4096 samples and sample-rate changes;
+- every output bus layout;
+- fast and slow automation;
+- the sequencer switch and MIDI/sequencer duplicates;
+- finding moved samples.
+
+DAW compatibility has **not** been verified by the maintainers yet. That includes FL Studio and Ableton Live. [docs/DAW_TESTING.md](docs/DAW_TESTING.md) has a step-by-step checklist; reports from different hosts are very welcome.
 
 ## Roadmap
 

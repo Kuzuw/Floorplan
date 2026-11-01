@@ -19,7 +19,7 @@ A clear description of the problem.
 
 **Environment**
 
-- Floorplan version (MENU → About):
+- Floorplan version (SETTINGS → About):
 - Format: VST3 / Standalone
 - Host and version:
 - OS and version:

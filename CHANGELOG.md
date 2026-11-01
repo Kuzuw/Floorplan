@@ -9,6 +9,39 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - App icon: the wordmark's stacked bars on a cream key. It shows on the Standalone app's window and taskbar button, its shortcuts, the macOS Dock and the Windows installer.
+- **Sequencer On** parameter (*SETTINGS → Internal sequencer on*), automatable. When it is off, the display shows `SEQ OFF` and only MIDI input and the pads play. It is the last parameter, so no existing index moves.
+- *SETTINGS → Each instrument to its own output* and *All instruments to the main output*, so multi-out routing takes one click.
+- *SETTINGS → MIDI note map*: the current map, with note names as Ableton Live and FL Studio show them.
+- MIDI All Sound Off (CC 120) fades out every voice.
+- A sample that is missing from its saved path is looked for by file name under `Documents/Floorplan/Samples`, including subfolders. *SETTINGS → Open samples folder* opens it.
+- `scripts/install-vst3.ps1` copies a local build to the Windows VST3 folder.
+- [docs/HOSTS.md](docs/HOSTS.md): installing, the sequencer, MIDI clips, automation, separate outputs, MIDI output and samples in FL Studio and Ableton Live. Not yet checked in either host.
+- Ten plugin tests that drive the processor like a host. They cover:
+  - MIDI mapping, velocity and note-offs;
+  - All Sound Off;
+  - preview and host hand-over;
+  - invalid host timing and count-in positions;
+  - the sequencer switch;
+  - MIDI/sequencer duplicates;
+  - fast and slow automation;
+  - finding moved samples;
+  - block sizes from 1 to 4096 samples and sample-rate changes;
+  - every output bus layout.
+
+### Changed
+
+- The eight extra outputs are now active by default, so hosts that only offer default-active outputs list them. They stay silent until a voice is routed to them, and the main mix is unchanged.
+- Output choices are named after their voice: *Out 2 (Kick)* … *Out 9 (Cymbal)*.
+- Pressing play in the host ends a preview started with Floorplan's PLAY button. Before, the preview kept running underneath and resumed when the host stopped.
+- A preview in a DAW uses the host's tempo instead of Floorplan's internal tempo.
+- A MIDI or pad hit within 2 ms of a sequencer hit on the same drum replaces it (with the louder velocity) instead of playing twice.
+
+### Fixed
+
+- A host tempo of zero, a negative tempo, or a NaN or infinite position is now ignored instead of being used.
+- A non-finite sample in the output resets the engine and mutes that block, so the host never receives NaN or infinity.
+- MIDI CCs 120–127 (channel mode messages) are no longer MIDI-learned or mapped to knobs.
+- A MIDI output note-off now uses the note that was sent. Before, changing the note map while a note was held could leave the note hanging in the receiving instrument.
 
 ## [0.1.2] - 2026-11-01
 

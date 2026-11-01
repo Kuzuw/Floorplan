@@ -100,9 +100,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         group->addChild (makeFloat (ids::filter (v), vName + " Filter", -100.0f, 100.0f, 0.0f, 0.0f, "%"));
         group->addChild (makeFloat (ids::drive (v), vName + " Drive", 0.0f, 100.0f, 0.0f, 0.0f, "%"));
 
+        // Output n + 2 is named after voice n, the voice it is meant for.
         juce::StringArray outs { "Main" };
         for (int b = 0; b < kNumVoices; ++b)
-            outs.add ("Out " + juce::String (b + 2));
+            outs.add ("Out " + juce::String (b + 2) + " (" + kVoiceSpecs[(size_t) b].name + ")");
         group->addChild (makeChoice (ids::output (v), vName + " Output", outs, 0));
         group->addChild (makeFloat (ids::sampleTune (v), vName + " Sample Tune", -24.0f, 24.0f, 0.0f, 0.0f, "st"));
         group->addChild (makeFloat (ids::sampleDecay (v), vName + " Sample Decay", 0.0f, 100.0f, 100.0f, 0.0f, "%"));
@@ -154,6 +155,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         }
     layout.add (std::move (advanced));
 
+    // Added after the Advanced extras, for the same reason.
+    auto options = std::make_unique<juce::AudioProcessorParameterGroup> ("options", "Options", " | ");
+    options->addChild (makeBool (ids::sequencerOn, "Sequencer On", true));
+    layout.add (std::move (options));
+
     return layout;
 }
 
@@ -201,6 +207,7 @@ ParameterCache::ParameterCache (Apvts& s)
     tempoParam   = raw (s, ids::tempo);
     seed         = raw (s, ids::seed);
     midiOutParam = raw (s, ids::midiOut);
+    seqOnParam   = raw (s, ids::sequencerOn);
 }
 
 void ParameterCache::readEngine (DrumEngine& engine) const noexcept

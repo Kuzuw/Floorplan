@@ -158,6 +158,383 @@ FP_TEST (state_round_trip)
     CHECK (std::memcmp (&pa, &pb, sizeof (PatternBank)) == 0);
     const auto& s = pb.patterns[5].tracks[Tom].steps[17];
     CHECK (s.on && s.velocity == 77 && s.probability == 40 && s.micro == -12 && s.ratchet == 3 && s.tune == -5 && s.decay == 30 && s.accent());
+
+    // Routing, the sequencer switch and a learned MIDI note travel too.
+    setParam (*a, ids::output (Snare), 2.0f);
+    setParam (*a, ids::sequencerOn, 0.0f);
+    a->beginNoteLearn (Clap);
+    juce::MidiBuffer learn;
+    learn.addEvent (juce::MidiMessage::noteOn (1, 64, (juce::uint8) 100), 0);
+    processBlocks (*a, 1, &learn);
+    CHECK (a->getVoiceNote (Clap) == 64);
+
+    juce::MemoryBlock state2;
+    a->getStateInformation (state2);
+    auto c = makeProcessor();
+    c->setStateInformation (state2.getData(), (int) state2.getSize());
+    CHECK ((int) getParam (*c, ids::output (Snare)) == 2);
+    CHECK (getParam (*c, ids::sequencerOn) < 0.5f);
+    CHECK (c->getVoiceNote (Clap) == 64);
+    CHECK (c->getVoiceNote (Kick) == kVoiceSpecs[Kick].defaultMidiNote);
+}
+
+FP_TEST (midi_note_map_and_velocity)
+{
+    // Each default note plays its voice and only that voice.
+    for (int v = 0; v < kNumVoices; ++v)
+    {
+        auto p = makeProcessor();
+        juce::MidiBuffer midi;
+        midi.addEvent (juce::MidiMessage::noteOn (10, kVoiceSpecs[(size_t) v].defaultMidiNote, (juce::uint8) 100), 3);
+        CHECK (processBlocks (*p, 2, &midi) > 1.0e-3f);
+        for (int w = 0; w < kNumVoices; ++w)
+            CHECK (p->getTriggerCount (w) == (w == v ? 1u : 0u));
+    }
+
+    // Velocity scales the hit.
+    auto peakAt = [] (juce::uint8 velocity)
+    {
+        auto p = makeProcessor();
+        juce::MidiBuffer midi;
+        midi.addEvent (juce::MidiMessage::noteOn (1, 38, velocity), 0);
+        return processBlocks (*p, 10, &midi);
+    };
+    const float loud = peakAt (127), soft = peakAt (30);
+    CHECK (soft > 0.0f && loud > soft * 3.0f);
+
+    auto p = makeProcessor();
+    // Note-offs and velocity-0 note-ons (a note-off by another name) trigger nothing.
+    {
+        juce::MidiBuffer midi;
+        midi.addEvent (juce::MidiMessage::noteOff (10, 36), 0);
+        midi.addEvent (juce::MidiMessage::noteOn (10, 38, (juce::uint8) 0), 5);
+        CHECK (processBlocks (*p, 2, &midi) == 0.0f);
+        CHECK (p->getTriggerCount (Kick) == 0 && p->getTriggerCount (Snare) == 0);
+    }
+    // Overlapping notes: two kicks in one block retrigger, kick and snare together both play.
+    {
+        juce::MidiBuffer midi;
+        midi.addEvent (juce::MidiMessage::noteOn (10, 36, (juce::uint8) 100), 0);
+        midi.addEvent (juce::MidiMessage::noteOn (10, 38, (juce::uint8) 100), 0);
+        midi.addEvent (juce::MidiMessage::noteOn (10, 36, (juce::uint8) 100), 300);
+        processBlocks (*p, 2, &midi);
+        CHECK (p->getTriggerCount (Kick) == 2 && p->getTriggerCount (Snare) == 1);
+    }
+    // Learning a note remaps the voice; the old note stops playing it.
+    {
+        p->beginNoteLearn (Snare);
+        juce::MidiBuffer learn;
+        learn.addEvent (juce::MidiMessage::noteOn (10, 60, (juce::uint8) 100), 0);
+        processBlocks (*p, 1, &learn);
+        CHECK (p->getVoiceNote (Snare) == 60);
+        CHECK (p->getTriggerCount (Snare) == 2); // the learning note also plays
+
+        juce::MidiBuffer old;
+        old.addEvent (juce::MidiMessage::noteOn (10, 38, (juce::uint8) 100), 0);
+        processBlocks (*p, 1, &old);
+        CHECK (p->getTriggerCount (Snare) == 2);
+
+        p->resetVoiceNotes();
+        CHECK (p->getVoiceNote (Snare) == 38);
+    }
+}
+
+FP_TEST (all_sound_off_silences_and_all_notes_off_does_not)
+{
+    auto ringing = [] (const juce::MidiMessage& panic)
+    {
+        auto p = makeProcessor();
+        juce::MidiBuffer hit;
+        hit.addEvent (juce::MidiMessage::noteOn (10, 49, (juce::uint8) 127), 0); // cymbal, 1.6 s decay
+        processBlocks (*p, 5, &hit);
+        juce::MidiBuffer stop;
+        stop.addEvent (panic, 0);
+        processBlocks (*p, 4, &stop); // the 4 ms fade runs out within ~40 ms
+        return processBlocks (*p, 3);
+    };
+    CHECK (ringing (juce::MidiMessage::allSoundOff (10)) == 0.0f);
+    CHECK (ringing (juce::MidiMessage::allNotesOff (10)) > 1.0e-3f);
+}
+
+FP_TEST (host_play_ends_the_preview)
+{
+    auto p = makeProcessor();
+    FakePlayHead head;
+    head.playing = false;
+    head.bpm = 60.0;
+    p->setPlayHead (&head);
+
+    // Preview while the host is stopped runs at the host's tempo: two kicks in two seconds at 60 BPM.
+    p->setInternalPlaying (true);
+    processBlocks (*p, (int) (kRate * 2.0 / kBlock), nullptr, &head);
+    CHECK (p->getTriggerCount (Kick) == 2);
+
+    // The host starts: preview ends and the host drives the pattern.
+    head.playing = true;
+    head.ppq = 0.0;
+    processBlocks (*p, 1, nullptr, &head);
+    CHECK (! p->isInternalPlaying());
+    CHECK (p->getTriggerCount (Kick) == 3);
+
+    // The host stops: nothing keeps playing.
+    head.playing = false;
+    const auto before = p->getTriggerCount (Kick);
+    processBlocks (*p, 200, nullptr, &head);
+    CHECK (p->getTriggerCount (Kick) == before);
+    CHECK (p->getPlayingStep() == -1);
+    p->setPlayHead (nullptr);
+}
+
+namespace
+{
+struct OddPlayHead final : juce::AudioPlayHead
+{
+    int kind = 0;
+
+    juce::Optional<PositionInfo> getPosition() const override
+    {
+        PositionInfo info;
+        info.setIsPlaying (true);
+        switch (kind)
+        {
+            case 0: info.setBpm (std::numeric_limits<double>::quiet_NaN()); info.setPpqPosition (std::numeric_limits<double>::infinity()); break;
+            case 1: info.setBpm (0.0); break;                 // no position at all
+            case 2: info.setBpm (-50.0); info.setPpqPosition (std::numeric_limits<double>::quiet_NaN()); break;
+            default: return {};                               // no information
+        }
+        return info;
+    }
+};
+} // namespace
+
+FP_TEST (invalid_host_timing_is_safe)
+{
+    // Nonsense tempo or position from a host: the plugin keeps running on its
+    // fallback clock, in time, with finite audio.
+    for (int kind = 0; kind < 4; ++kind)
+    {
+        auto p = makeProcessor();
+        OddPlayHead head;
+        head.kind = kind;
+        p->setPlayHead (&head);
+        if (kind == 3)
+            p->setInternalPlaying (true); // no host information: only the preview plays
+        CHECK (processBlocks (*p, 200) >= 0.0f);
+        CHECK (std::isfinite (p->getDisplayBpm()) && p->getDisplayBpm() > 0.0);
+        CHECK (p->getTriggerCount (Kick) >= 2);
+        p->setPlayHead (nullptr);
+    }
+
+    // A count-in reports positions before zero: the grid still lines up. From
+    // beat -1, a kick plays at -1 (step 12 of the previous bar) and at 0.
+    auto p = makeProcessor();
+    FakePlayHead head;
+    head.ppq = -1.0;
+    p->setPlayHead (&head);
+    processBlocks (*p, (int) (kRate * 0.6 / kBlock), nullptr, &head);
+    CHECK (p->getTriggerCount (Kick) == 2);
+    p->setPlayHead (nullptr);
+}
+
+FP_TEST (sequencer_can_be_switched_off)
+{
+    auto p = makeProcessor();
+    setParam (*p, ids::sequencerOn, 0.0f);
+    p->setInternalPlaying (true);
+    CHECK (processBlocks (*p, 100) == 0.0f);
+    CHECK (p->getTriggerCount (Kick) == 0);
+    CHECK (! p->isTransportRunning());
+
+    // MIDI input still plays.
+    juce::MidiBuffer midi;
+    midi.addEvent (juce::MidiMessage::noteOn (10, 36, (juce::uint8) 100), 0);
+    processBlocks (*p, 2, &midi);
+    CHECK (p->getTriggerCount (Kick) == 1);
+
+    setParam (*p, ids::sequencerOn, 1.0f);
+    processBlocks (*p, 100);
+    CHECK (p->getTriggerCount (Kick) >= 3);
+}
+
+FP_TEST (midi_and_sequencer_do_not_double)
+{
+    // The host plays the pattern and a MIDI clip with the same kick on beat 1
+    // (as when the sequencer's MIDI output was recorded and played back).
+    auto p = makeProcessor();
+    FakePlayHead head;
+    p->setPlayHead (&head);
+    juce::MidiBuffer midi;
+    midi.addEvent (juce::MidiMessage::noteOn (10, 36, (juce::uint8) 40), 0);
+    processBlocks (*p, 1, &midi, &head);
+    CHECK (p->getTriggerCount (Kick) == 1);
+
+    // A MIDI kick clearly apart from the pattern's (10 ms later) is its own hit.
+    auto q = makeProcessor();
+    FakePlayHead head2;
+    q->setPlayHead (&head2);
+    juce::MidiBuffer late;
+    late.addEvent (juce::MidiMessage::noteOn (10, 36, (juce::uint8) 40), (int) (0.010 * kRate));
+    processBlocks (*q, 1, &late, &head2);
+    CHECK (q->getTriggerCount (Kick) == 2);
+
+    p->setPlayHead (nullptr);
+    q->setPlayHead (nullptr);
+}
+
+FP_TEST (automation_fast_and_slow_reaches_the_engine)
+{
+    // A long, low kick gives a smooth signal, so any jump in gain shows up as a
+    // jump between neighbouring samples.
+    auto p = makeProcessor();
+    setParam (*p, ids::synth (Kick, KickP::Decay), 2500.0f);
+    setParam (*p, ids::synth (Kick, KickP::Click), 0.0f);
+    setParam (*p, ids::masterClip, 0.0f);
+
+    juce::AudioBuffer<float> buffer (p->getTotalNumOutputChannels(), kBlock);
+    juce::MidiBuffer hit;
+    hit.addEvent (juce::MidiMessage::noteOn (10, 36, (juce::uint8) 127), 0);
+    auto run = [&] (juce::MidiBuffer& midi, float& maxStep, float& prev)
+    {
+        buffer.clear();
+        p->processBlock (buffer, midi);
+        midi.clear();
+        const float* l = buffer.getReadPointer (0);
+        for (int i = 0; i < kBlock; ++i)
+        {
+            maxStep = juce::jmax (maxStep, std::abs (l[i] - prev));
+            prev = l[i];
+        }
+        return buffer.getRMSLevel (0, 0, kBlock);
+    };
+
+    float maxStep = 0.0f, prev = 0.0f;
+    for (int b = 0; b < 10; ++b) // past the pitch sweep (run() clears the MIDI after the first block)
+        run (hit, maxStep, prev);
+
+    // Fast: the level jumps 30 dB every four blocks (about 43 ms).
+    maxStep = 0.0f;
+    float loudRms = 0.0f, quietRms = 1.0f;
+    for (int b = 0; b < 32; ++b)
+    {
+        const bool loud = (b / 4) % 2 == 0;
+        setParam (*p, ids::level (Kick), loud ? 0.0f : -30.0f);
+        juce::MidiBuffer none;
+        const float rms = run (none, maxStep, prev);
+        if (b % 4 == 3) // last block of a segment: settled
+            (loud ? loudRms : quietRms) = rms;
+    }
+    CHECK (loudRms > quietRms * 10.0f); // the automation reached the sound
+    CHECK (maxStep < 0.03f);            // and was smoothed: no clicks
+
+    // Slow: a one-second fade up from -60 dB rises steadily.
+    juce::MidiBuffer again;
+    again.addEvent (juce::MidiMessage::noteOn (10, 36, (juce::uint8) 127), 0);
+    std::vector<float> rms;
+    maxStep = 0.0f;
+    const int fadeBlocks = (int) (kRate / kBlock);
+    for (int b = 0; b < fadeBlocks; ++b)
+    {
+        setParam (*p, ids::level (Kick), -60.0f + 60.0f * (float) b / (float) (fadeBlocks - 1));
+        rms.push_back (run (again, maxStep, prev));
+    }
+    CHECK (rms.back() > rms[(size_t) fadeBlocks / 2] && rms[(size_t) fadeBlocks / 2] > rms[5]);
+    CHECK (maxStep < 0.03f);
+}
+
+FP_TEST (missing_sample_is_found_by_name)
+{
+    const auto root = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("floorplan_sample_search");
+    root.deleteRecursively();
+    const auto nested = root.getChildFile ("Packs").getChildFile ("909");
+    CHECK (nested.createDirectory());
+    const auto wav = nested.getChildFile ("MySnare.wav");
+    {
+        std::unique_ptr<juce::OutputStream> stream = std::make_unique<juce::FileOutputStream> (wav);
+        auto writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions()
+                                                                          .withSampleRate (kRate)
+                                                                          .withNumChannels (1)
+                                                                          .withBitsPerSample (16));
+        CHECK (writer != nullptr);
+        juce::AudioBuffer<float> tone (1, 4800);
+        for (int i = 0; i < tone.getNumSamples(); ++i)
+            tone.setSample (0, i, 0.5f * std::sin (0.05f * (float) i));
+        if (writer != nullptr)
+            writer->writeFromAudioSampleBuffer (tone, 0, tone.getNumSamples());
+    }
+
+    juce::XmlElement state ("FLOORPLAN");
+    state.setAttribute ("stateVersion", 1);
+    auto* sample = state.createNewChildElement ("SAMPLES")->createNewChildElement ("SAMPLE");
+    sample->setAttribute ("voice", "snare");
+    sample->setAttribute ("path", "Z:\\Old Machine\\Samples\\MySnare.wav");
+    juce::MemoryBlock mb;
+    juce::AudioProcessor::copyXmlToBinary (state, mb);
+
+    // Found by name anywhere under the search folder.
+    auto p = makeProcessor();
+    p->setSampleSearchFolder (root);
+    p->setStateInformation (mb.getData(), (int) mb.getSize());
+    CHECK (! p->isSampleMissing (Snare));
+    CHECK (juce::File (p->getSamplePath (Snare)) == wav);
+
+    // Not found: reported as missing, the saved path kept, synthesis plays.
+    auto q = makeProcessor();
+    q->setSampleSearchFolder (root.getChildFile ("empty"));
+    q->setStateInformation (mb.getData(), (int) mb.getSize());
+    CHECK (q->isSampleMissing (Snare));
+    CHECK (q->getSamplePath (Snare) == "Z:\\Old Machine\\Samples\\MySnare.wav");
+    juce::MidiBuffer midi;
+    midi.addEvent (juce::MidiMessage::noteOn (10, 38, (juce::uint8) 100), 0);
+    CHECK (processBlocks (*q, 4, &midi) > 1.0e-3f);
+
+    root.deleteRecursively();
+}
+
+FP_TEST (any_block_size_and_sample_rate_keeps_time)
+{
+    // Hosts change block sizes from call to call and may exceed the size they
+    // announced. One bar at 120 BPM must still give exactly four kicks.
+    auto p = std::make_unique<FloorplanProcessor>();
+    p->setRateAndBufferSizeDetails (44100.0, 256);
+    p->prepareToPlay (44100.0, 256);
+    FakePlayHead head;
+    p->setPlayHead (&head);
+
+    const int sizes[] = { 1, 7, 256, 1000, 4096, 64, 333 };
+    const int total = (int) (44100.0 * 2.0) - 200;
+    juce::AudioBuffer<float> buffer (p->getTotalNumOutputChannels(), 4096);
+    bool finite = true;
+    int done = 0;
+    for (int i = 0; done < total; ++i)
+    {
+        const int n = juce::jmin (sizes[i % 7], total - done);
+        juce::AudioBuffer<float> view (buffer.getArrayOfWritePointers(), buffer.getNumChannels(), n);
+        view.clear();
+        juce::MidiBuffer midi;
+        p->processBlock (view, midi);
+        for (int ch = 0; ch < view.getNumChannels(); ++ch)
+            finite = finite && std::isfinite (view.getMagnitude (ch, 0, n));
+        head.ppq += n * head.bpm / (60.0 * 44100.0);
+        done += n;
+    }
+    CHECK (finite);
+    CHECK (p->getTriggerCount (Kick) == 4);
+
+    // A sample-rate change mid-session (the host re-prepares): still in time.
+    p->setRateAndBufferSizeDetails (96000.0, 64);
+    p->prepareToPlay (96000.0, 64);
+    head.ppq = 0.0;
+    const auto before = p->getTriggerCount (Kick);
+    juce::AudioBuffer<float> hi (p->getTotalNumOutputChannels(), 64);
+    for (int b = 0; b < (int) (96000.0 * 2.0 / 64) - 4; ++b)
+    {
+        hi.clear();
+        juce::MidiBuffer midi;
+        p->processBlock (hi, midi);
+        head.ppq += 64 * head.bpm / (60.0 * 96000.0);
+    }
+    CHECK (p->getTriggerCount (Kick) - before == 4);
+    p->setPlayHead (nullptr);
 }
 
 FP_TEST (legacy_state_migration)
@@ -318,21 +695,58 @@ FP_TEST (bus_layouts)
         multi.outputBuses.add (i % 2 == 0 ? juce::AudioChannelSet::stereo() : juce::AudioChannelSet::disabled());
     CHECK (p->isBusesLayoutSupported (multi));
 
-    // Route the snare to output 2 with that bus enabled: it must leave the main mix.
+    // The eight extra outputs are active by default (silent until used).
     CHECK (p->getBusCount (false) == 9);
-    auto* bus = p->getBus (false, 1);
-    CHECK (bus != nullptr && bus->enable (true));
-    p->prepareToPlay (kRate, kBlock);
-    setParam (*p, ids::output (Snare), 1.0f);
+    CHECK (p->getTotalNumOutputChannels() == 18);
+}
 
-    juce::AudioBuffer<float> buffer (p->getTotalNumOutputChannels(), kBlock);
-    CHECK (buffer.getNumChannels() == 4);
-    juce::MidiBuffer midi;
-    midi.addEvent (juce::MidiMessage::noteOn (10, 38, (juce::uint8) 120), 0);
-    buffer.clear();
-    p->processBlock (buffer, midi);
-    CHECK (buffer.getMagnitude (0, 0, kBlock) == 0.0f);
-    CHECK (buffer.getMagnitude (2, 0, kBlock) > 0.01f);
+FP_TEST (multi_output_routing_in_every_layout)
+{
+    // Three layouts a host can choose: every output, main only, and every
+    // other output disabled. For each voice routed to "its" output (Out v+2):
+    // if that bus is enabled the voice is there and nowhere else, otherwise it
+    // falls back to the main mix. Either way it is heard exactly once.
+    for (int layoutKind = 0; layoutKind < 3; ++layoutKind)
+    {
+        auto p = std::make_unique<FloorplanProcessor>();
+        juce::AudioProcessor::BusesLayout layout;
+        layout.outputBuses.add (juce::AudioChannelSet::stereo());
+        for (int b = 0; b < kNumVoices; ++b)
+        {
+            const bool on = layoutKind == 0 || (layoutKind == 2 && b % 2 == 0);
+            layout.outputBuses.add (on ? juce::AudioChannelSet::stereo() : juce::AudioChannelSet::disabled());
+        }
+        CHECK (p->setBusesLayout (layout));
+        p->setRateAndBufferSizeDetails (kRate, kBlock);
+        p->prepareToPlay (kRate, kBlock);
+        for (int v = 0; v < kNumVoices; ++v)
+            setParam (*p, ids::output (v), (float) (v + 1));
+
+        for (int v = 0; v < kNumVoices; ++v)
+        {
+            juce::AudioBuffer<float> buffer (p->getTotalNumOutputChannels(), kBlock);
+            juce::MidiBuffer midi;
+            midi.addEvent (juce::MidiMessage::noteOn (10, kVoiceSpecs[(size_t) v].defaultMidiNote, (juce::uint8) 120), 0);
+            buffer.clear();
+            p->processBlock (buffer, midi);
+
+            const bool ownBus = p->getBus (false, v + 1)->isEnabled();
+            for (int b = 0; b <= kNumVoices; ++b)
+            {
+                auto bus = p->getBusBuffer (buffer, false, b);
+                const float level = bus.getNumChannels() > 0 ? bus.getMagnitude (0, kBlock) : 0.0f;
+                const bool expected = ownBus ? b == v + 1 : b == 0;
+                CHECK (expected ? level > 1.0e-3f : level == 0.0f);
+            }
+
+            // Let the voice ring out before the next one.
+            for (int i = 0; i < 400; ++i)
+            {
+                juce::MidiBuffer none;
+                p->processBlock (buffer, none);
+            }
+        }
+    }
 }
 
 FP_TEST (parameters_are_automatable)
@@ -358,7 +772,7 @@ FP_TEST (parameters_are_automatable)
         CHECK (std::abs (atMax - ranged->getNormalisableRange().end) < 1.0e-3f);
         ranged->setValueNotifyingHost (ranged->convertTo0to1 (before));
     }
-    int expected = 4 + 9 + kChainSlots;
+    int expected = 4 + 9 + kChainSlots + 1; // master, sequencer, chain slots, Sequencer On
     for (int v = 0; v < kNumVoices; ++v)
         expected += numVoiceParams (v) + 9;
     CHECK (count == expected);
@@ -380,7 +794,9 @@ FP_TEST (advanced_parameters_keep_existing_indices)
     CHECK (idAt (151) == ids::synth (Clap, ClapP::Attack));
     CHECK (idAt (154) == ids::synth (Clap, ClapP::Jitter));
     CHECK (idAt (155) == ids::synth (ClosedHat, MetalP::Attack));
-    CHECK (idAt (params.size() - 1) == ids::synth (Cymbal, MetalP::Stick));
+    CHECK (idAt (184) == ids::synth (Cymbal, MetalP::Stick));
+    CHECK (idAt (185) == ids::sequencerOn);
+    CHECK (params.size() == 186);
 }
 
 FP_TEST (old_state_sets_new_parameters_to_default)

@@ -23,7 +23,8 @@ HeaderComponent::HeaderComponent (FloorplanProcessor& p) : proc (p), swingKnob (
     saveButton.setTooltip ("Save the current sound as a user kit");
     undoButton.setTooltip ("Undo pattern edit (Ctrl+Z)");
     redoButton.setTooltip ("Redo pattern edit (Ctrl+Y)");
-    playButton.setTooltip ("Internal transport (Space). In a DAW the host transport takes priority.");
+    playButton.setTooltip ("Play the pattern on the internal clock (Space). In a DAW this previews while the host is stopped; "
+                           "pressing play in the host ends the preview and the host takes over.");
     menuButton.setTooltip ("Patterns, kits, MIDI and shortcuts");
     advancedButton.setTooltip ("Advanced Mode: a wider sound panel with every control of the selected instrument");
     swingKnob.setTooltip ("Swing: delays every second step");
@@ -107,11 +108,13 @@ void HeaderComponent::refresh()
     // MIDI-learn prompt. Encoded as one string so it repaints only on change.
     const bool learn = proc.isLearning();
     const bool running = proc.isTransportRunning() && proc.getPlayingStep() >= 0;
+    const bool seqOff = proc.apvts.getRawParameterValue (ids::sequencerOn)->load() < 0.5f;
     juce::String newStatus;
     newStatus << (running ? juce::String (proc.getPlayingPattern() + 1).paddedLeft ('0', 2) + "."
                                 + juce::String (proc.getPlayingStep() + 1).paddedLeft ('0', 2)
                           : juce::String ("--.--"))
-              << (proc.isHostSynced() ? "|HOST" : "|INT") << (running ? "|RUN" : "|STOP") << (learn ? "|LEARN" : "");
+              << (proc.isHostSynced() ? "|HOST" : "|INT") << (running ? "|RUN" : "|STOP") << (learn ? "|LEARN" : "")
+              << (seqOff ? "|OFF" : "");
     if (newStatus != status || learn != statusIsLearn)
     {
         status = newStatus;
@@ -215,6 +218,12 @@ void HeaderComponent::paint (juce::Graphics& g)
     {
         g.setColour (colours::accent);
         g.drawFittedText ("MIDI LEARN\nNOTE / CC", column, juce::Justification::centredLeft, 2, 0.8f);
+    }
+    else if (fields.contains ("OFF"))
+    {
+        // Internal sequencer switched off: only MIDI input and the pads play.
+        g.setColour (colours::screenText);
+        g.drawFittedText ("SEQ\nOFF", column, juce::Justification::centredLeft, 2, 0.8f);
     }
     else
     {

@@ -73,6 +73,16 @@ public:
     juce::String getSampleWildcard() const { return sampleLoader.getWildcard(); }
     bool canLoadSample (const juce::String& path) const { return sampleLoader.canLoad (path); }
 
+    // Where a project's sample is looked for by file name when its saved path
+    // no longer exists (default: Documents/Floorplan/Samples, searched recursively).
+    static juce::File getDefaultSampleFolder();
+    void setSampleSearchFolder (const juce::File& folder) { sampleSearchFolder = folder; }
+    juce::File getSampleSearchFolder() const { return sampleSearchFolder; }
+
+    // Hits from MIDI input or the pads within this window of a sequencer hit on
+    // the same voice replace it instead of doubling it.
+    static constexpr double kDuplicateWindowSeconds = 0.002;
+
     // MIDI mapping (message thread) ------------------------------------------------
     void beginNoteLearn (int voice) noexcept { learnNoteVoice.store (voice); }
     int getVoiceNote (int voice) const noexcept { return voiceNotes[(size_t) voice].load(); }
@@ -104,6 +114,9 @@ private:
     void writeMidiOutput (juce::MidiBuffer& midi, const TriggerEvent* seqEvents, int numSeqEvents, int numSamples);
     void pushUiMessage (const MidiUiMessage& m) noexcept;
     void applySampleOnMessageThread (int voice, std::unique_ptr<SampleData> data, const juce::String& path, bool missing);
+    juce::File findMissingSample (const juce::String& savedPath) const;
+    int mergeSequencerEvents (int liveCount, int seqCount) noexcept;
+    bool outputIsFinite (juce::AudioBuffer<float>& buffer, int numSamples) const noexcept;
     int parameterIndex (const juce::String& paramId) const;
 
     ParameterCache params { apvts };
@@ -119,7 +132,12 @@ private:
     SequencerSettings seqSettings;
     double internalPpq = 0.0;
     double lastHostBpm = 120.0;
-    std::array<int, kNumVoices> pendingNoteOff {};
+    bool hostWasPlaying = false;
+
+    // MIDI output note-offs still to send. The note is kept with the countdown
+    // so a note-map change in between cannot leave a note hanging.
+    struct PendingNoteOff { int samplesLeft = -1; int note = 0; };
+    std::array<PendingNoteOff, kNumVoices> pendingNoteOff {};
     juce::AudioBuffer<float> monoFallback;
 
     // GUI -> audio trigger queue
@@ -141,6 +159,7 @@ private:
     mutable juce::CriticalSection sampleLock;
     std::array<juce::String, kNumVoices> samplePaths;
     std::array<bool, kNumVoices> sampleMissing {};
+    juce::File sampleSearchFolder { getDefaultSampleFolder() };
 
     std::atomic<bool> internalPlay { false };
 
