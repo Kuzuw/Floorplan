@@ -30,7 +30,20 @@ jobs:
         run: cmake --build build --config Release --parallel
 
       - name: Test
-        run: ctest --test-dir build -C Release --output-on-failure
+        shell: bash
+        run: |
+          set -o pipefail
+          ctest --test-dir build -C Release --output-on-failure 2>&1 | tee test.log
+
+      - name: Report failing tests
+        # Annotations are visible without signing in, unlike the raw log.
+        if: failure()
+        shell: bash
+        run: |
+          [ -f test.log ] || exit 0
+          grep -E "FAILED |\(.* vs .*\)|\*\*\*Failed|tests failed" test.log | sort -u | head -n 20 | while IFS= read -r line; do
+            echo "::error::${line}"
+          done
 
       - name: Benchmark
         shell: bash
@@ -73,6 +86,7 @@ jobs:
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.configure }}
 
       - name: Build
+        id: build
         timeout-minutes: 30
         shell: bash
         run: |
@@ -81,7 +95,7 @@ jobs:
 
       - name: Report compiler errors
         # Annotations are visible without signing in, unlike the raw log.
-        if: failure()
+        if: failure() && steps.build.outcome == 'failure'
         shell: bash
         run: |
           grep -E "(error|fatal error)( C[0-9]+|LNK[0-9]+)?:|undefined reference|multiple definition|relocation .* can not be used|recompile with" build.log \
@@ -91,12 +105,20 @@ jobs:
           echo "::error title=Build log tail::$(tail -n 40 build.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
 
       - name: Test
-        if: runner.os != 'Linux'
-        run: ctest --test-dir build -C Release --output-on-failure
+        # Linux has no display: the editor tests run on a virtual one.
+        shell: bash
+        run: |
+          set -o pipefail
+          ${{ runner.os == 'Linux' && 'xvfb-run -a' || '' }} ctest --test-dir build -C Release --output-on-failure 2>&1 | tee test.log
 
-      - name: Test (virtual display)
-        if: runner.os == 'Linux'
-        run: xvfb-run -a ctest --test-dir build -C Release --output-on-failure
+      - name: Report failing tests
+        if: failure()
+        shell: bash
+        run: |
+          [ -f test.log ] || exit 0
+          grep -E "FAILED |\(.* vs .*\)|\*\*\*Failed|tests failed" test.log | sort -u | head -n 20 | while IFS= read -r line; do
+            echo "::error::${line}"
+          done
 
       - name: Upload plugin
         uses: actions/upload-artifact@v5

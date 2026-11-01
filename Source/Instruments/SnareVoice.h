@@ -48,7 +48,7 @@ protected:
         bodyCoef   = dsp::decayCoef (p[BodyDecay] * 0.001f * t.decayMul, sampleRate);
         noiseEnv   = 1.0f;
         noiseCoef  = dsp::decayCoef (p[Decay] * 0.001f * t.decayMul, sampleRate);
-        wireWait   = (int) std::ceil (p[WireDelay] * 0.001 * sampleRate); // first sample at or after the delay
+        wireWait   = dsp::msToSamples (p[WireDelay], sampleRate);
         dropDepth  = p[Drop] * 0.01f;
         pitchEnv   = 1.0f;
         pitchCoef  = dsp::timeConstantCoef (p[DropTime] * 0.001f, sampleRate);

@@ -27,6 +27,14 @@ inline float timeConstantCoef (float seconds, double sampleRate) noexcept
     return (float) std::exp (-1.0 / samples);
 }
 
+// Whole samples in `ms` milliseconds, rounded to the nearest sample. Rounding
+// rather than truncating keeps the count the same on every compiler: with
+// fast-math, a product such as 864 can come out as 863.9999.
+inline int msToSamples (float ms, double sampleRate) noexcept
+{
+    return (int) std::lround ((double) ms * 0.001 * sampleRate);
+}
+
 inline float dbToGain (float db) noexcept { return db <= -60.0f ? 0.0f : std::pow (10.0f, db * 0.05f); }
 inline float semitonesToRatio (float st) noexcept { return std::exp2 (st * (1.0f / 12.0f)); }
 

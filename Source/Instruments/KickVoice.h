@@ -53,9 +53,9 @@ protected:
         const float decaySeconds = p[Decay] * 0.001f * t.decayMul;
         amp        = 1.0f;
         ampCoef    = dsp::decayCoef (decaySeconds, sampleRate);
-        holdLeft   = (int) (p[Punch] * 0.01f * 0.06f * (float) sampleRate);
+        holdLeft   = dsp::msToSamples (p[Punch] * 0.6f, sampleRate); // 0..60 ms
 
-        const int attackSamples = (int) (p[Attack] * 0.001f * (float) sampleRate);
+        const int attackSamples = dsp::msToSamples (p[Attack], sampleRate);
         attackEnv  = attackSamples > 0 ? 0.0f : 1.0f;
         attackInc  = attackSamples > 0 ? 1.0f / (float) attackSamples : 1.0f;
 

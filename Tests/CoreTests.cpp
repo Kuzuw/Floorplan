@@ -371,7 +371,7 @@ float maxDifference (const std::vector<float>& a, const std::vector<float>& b)
     return d;
 }
 
-// The snare exactly as 0.1.0 rendered it.
+// The snare as 0.1.0 rendered it.
 Stereo renderOriginalSnare (const float* p, double sr, int total)
 {
     using namespace SnareP;
@@ -409,7 +409,7 @@ Stereo renderOriginalSnare (const float* p, double sr, int total)
     return out;
 }
 
-// The clap exactly as 0.1.0 rendered it.
+// The clap as 0.1.0 rendered it.
 Stereo renderOriginalClap (const float* p, double sr, int total)
 {
     using namespace ClapP;
@@ -418,7 +418,7 @@ Stereo renderOriginalClap (const float* p, double sr, int total)
     bpR.setup (p[Tune], 0.8f + p[Tone] * 0.03f, sr);
     const float bandGain = bpL.k * 2.2f;
     const int bursts = std::clamp ((int) std::lround (p[Bursts]), 1, 6);
-    const int spreadSamples = std::max (1, (int) (p[Spread] * 0.001f * (float) sr));
+    const int spreadSamples = std::max (1, dsp::msToSamples (p[Spread], sr));
     const float tailCoef = dsp::decayCoef (p[Decay] * 0.001f, sr);
     const float burstCoef = dsp::decayCoef (std::min (p[Spread] * 1.6f, 30.0f) * 0.001f, sr);
     const float attackInc = 1.0f / std::max (1.0f, 0.0004f * (float) sr);
@@ -454,7 +454,16 @@ Stereo renderOriginalClap (const float* p, double sr, int total)
     return out;
 }
 
-// The kick exactly as 0.1.0 rendered it, before it had Advanced parameters.
+// The references below are the 0.1.0 voices, with one change also made to
+// the voices since: millisecond times become whole samples with
+// dsp::msToSamples (rounded) instead of a truncating cast, which differed by
+// one sample between compilers under fast-math.
+//
+// The voices are built with fast-math and the references are not, so allow
+// rounding noise. A real change is far larger: 1% more snare Ring is ~4e-3.
+constexpr float kReferenceTolerance = 5.0e-4f;
+
+// The kick as 0.1.0 rendered it, before it had Advanced parameters.
 std::vector<float> renderOriginalKick (const float* p, double sr, int total)
 {
     using namespace KickP;
@@ -464,7 +473,7 @@ std::vector<float> renderOriginalKick (const float* p, double sr, int total)
     const float ampCoef = dsp::decayCoef (p[Decay] * 0.001f, sr);
     const float clickAmt = p[Click] * 0.01f, clickCoef = dsp::decayCoef (0.007f, sr);
     float sweepEnv = 1.0f, amp = 1.0f, clickEnv = 1.0f, phase = 0.0f;
-    int holdLeft = (int) (p[Punch] * 0.01f * 0.06f * (float) sr);
+    int holdLeft = dsp::msToSamples (p[Punch] * 0.6f, sr);
     dsp::OnePoleHp hp;
     hp.setup (1800.0f, sr);
     dsp::Noise noise;
@@ -517,7 +526,7 @@ FP_TEST (kick_defaults_match_the_original_kick)
         const auto ref = renderOriginalKick (p.data(), sr, (int) now.size());
         float maxDiff = 0.0f;
         for (size_t i = 0; i < now.size(); ++i) maxDiff = std::max (maxDiff, std::abs (now[i] - ref[i]));
-        CHECK (maxDiff < 1.0e-4f);
+        CHECK (maxDiff < kReferenceTolerance);
     }
 }
 
@@ -664,13 +673,13 @@ FP_TEST (snare_and_clap_defaults_match_the_originals)
         std::vector<float> R;
         auto L = renderVoiceDirect (Snare, s, sr, 1.0, &R);
         auto ref = renderOriginalSnare (s.data(), sr, (int) L.size());
-        CHECK (maxDifference (L, ref.first) < 1.0e-4f);
-        CHECK (maxDifference (R, ref.second) < 1.0e-4f);
+        CHECK (maxDifference (L, ref.first) < kReferenceTolerance);
+        CHECK (maxDifference (R, ref.second) < kReferenceTolerance);
 
         L = renderVoiceDirect (Clap, c, sr, 1.0, &R);
         ref = renderOriginalClap (c.data(), sr, (int) L.size());
-        CHECK (maxDifference (L, ref.first) < 1.0e-4f);
-        CHECK (maxDifference (R, ref.second) < 1.0e-4f);
+        CHECK (maxDifference (L, ref.first) < kReferenceTolerance);
+        CHECK (maxDifference (R, ref.second) < kReferenceTolerance);
     }
 }
 

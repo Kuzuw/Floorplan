@@ -40,6 +40,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The minimum window size is now 75% of the design size (was 60%), so labels stay readable.
 - Loading a project now sets any parameter it does not contain to its default. Before, such parameters kept whatever value they had. Projects and kits from 0.1.0 load the new kick, snare and clap parameters at defaults that sound like those voices did in 0.1.0. Tests compare each one with a copy of the 0.1.0 code.
 - New parameters are added after all existing ones, so existing parameter indices do not change.
+- Millisecond times in the voices now convert to whole samples by rounding instead of cutting off the fraction. This covers the kick's attack and hold, the clap's spread and the snare's wire delay. The result is the same on every compiler, and at most one sample away from 0.1.0.
+
+### Fixed
+
+- CI: the core tests failed on Linux (GCC). Failing test output now appears as annotations, which anyone can read without signing in.
 
 ## [0.1.0] - 2026-11-01
 

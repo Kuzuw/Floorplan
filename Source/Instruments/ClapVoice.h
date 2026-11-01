@@ -22,7 +22,7 @@ struct ClapEnvelope
         using namespace ClapP;
         bursts        = std::clamp ((int) std::lround (p[Bursts]), 1, 6);
         burstIndex    = 0;
-        spreadSamples = std::max (1, (int) (p[Spread] * 0.001f * (float) sampleRate));
+        spreadSamples = std::max (1, dsp::msToSamples (p[Spread], sampleRate));
         nextBurstAt   = 0;
         counter       = 0;
         tailCoef      = dsp::decayCoef (p[Decay] * 0.001f * decayMul, sampleRate);
