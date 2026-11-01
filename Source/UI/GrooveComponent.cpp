@@ -6,7 +6,6 @@ namespace fp::ui
 
 GrooveComponent::GrooveComponent (FloorplanProcessor& p)
     : proc (p),
-      swingKnob (p, ids::swing, "Swing"),
       accentKnob (p, ids::accent, "Accent"),
       randomKnob (p, ids::randAmount, "Rand Amt"),
       seedKnob (p, ids::seed, "Variation"),
@@ -14,11 +13,11 @@ GrooveComponent::GrooveComponent (FloorplanProcessor& p)
       resolutionBox (p, ids::resolution),
       chainButton (p, "CHAIN", colours::accent)
 {
-    for (auto* k : { &swingKnob, &accentKnob, &randomKnob, &seedKnob })
+    for (auto* k : { &accentKnob, &randomKnob, &seedKnob })
         addAndMakeVisible (k);
-    swingKnob.setCap (colours::accent);   // the feel control gets the signal colour
-    accentKnob.setCap (colours::keyDark);
-    setKeyStyle (chainButton, KeyStyle::light);
+    accentKnob.setTooltip ("Level boost of accented steps");
+    randomKnob.setTooltip ("Intensity of RAND (pattern) and Randomize sound");
+    seedKnob.setTooltip ("Probability seed: picks a different but repeatable variation");
 
     grooveBox.setTooltip ("Groove template (timing feel)");
     resolutionBox.setTooltip ("Step resolution");
@@ -46,13 +45,13 @@ GrooveComponent::GrooveComponent (FloorplanProcessor& p)
 
 void GrooveComponent::resized()
 {
-    auto r = getLocalBounds().reduced (10, 8);
-    r.removeFromTop (22);
+    auto r = getLocalBounds().reduced (12, 10);
+    r.removeFromTop (24);
 
-    auto knobs = r.removeFromTop (78);
-    const int kw = knobs.getWidth() / 4;
-    for (auto* k : { &swingKnob, &accentKnob, &randomKnob, &seedKnob })
-        k->setBounds (knobs.removeFromLeft (kw).reduced (3, 0));
+    auto knobs = r.removeFromTop (84);
+    const int kw = knobs.getWidth() / 3;
+    for (auto* k : { &accentKnob, &randomKnob, &seedKnob })
+        k->setBounds (knobs.removeFromLeft (kw).reduced (6, 0));
 
     r.removeFromTop (20);
     auto combos = r.removeFromTop (24);
@@ -82,8 +81,8 @@ void GrooveComponent::paint (juce::Graphics& g)
 {
     drawPanel (g, getLocalBounds(), "Groove & Pattern");
 
-    g.setColour (colours::textDim);
-    g.setFont (font (9.5f, true).withExtraKerningFactor (0.06f));
+    g.setColour (colours::ink);
+    g.setFont (labelFont());
     auto label = [&g] (juce::Rectangle<int> area, const juce::String& text)
     { g.drawText (text, area, juce::Justification::centredLeft); };
 

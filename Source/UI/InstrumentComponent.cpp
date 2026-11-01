@@ -49,7 +49,7 @@ void InstrumentComponent::paint (juce::Graphics& g)
 {
     // Align the title with the sequencer's toolbar row.
     const auto titleArea = getLocalBounds().withHeight (gridTop).reduced (0, juce::jmax (0, (gridTop - 26) / 2));
-    drawSectionTitle (g, titleArea, "Voices");
+    drawSectionTitle (g, titleArea, "Tracks");
 }
 
 void InstrumentComponent::showRowMenu (int voice, Row& row)
@@ -127,8 +127,8 @@ void InstrumentComponent::showRowMenu (int voice, Row& row)
 // ---------------------------------------------------------------------------
 InstrumentComponent::Row::Row (InstrumentComponent& o, int v)
     : owner (o), voice (v),
-      muteButton (o.proc, "M", colours::mute),
-      soloButton (o.proc, "S", colours::solo)
+      muteButton (o.proc, "M", colours::ink),
+      soloButton (o.proc, "S", colours::accent)
 {
     muteButton.bind (ids::mute (v));
     soloButton.bind (ids::solo (v));
@@ -137,14 +137,22 @@ InstrumentComponent::Row::Row (InstrumentComponent& o, int v)
     addAndMakeVisible (muteButton);
     addAndMakeVisible (soloButton);
     setRepaintsOnMouseActivity (true);
+    setTooltip ("Click to select. Click the badge to audition, right-click for samples, MIDI note and track tools.");
+}
+
+juce::Rectangle<float> InstrumentComponent::Row::badgeArea() const
+{
+    const auto r = getLocalBounds().toFloat().reduced (0.0f, 2.0f);
+    return { r.getX() + 5.0f, r.getY() + 5.0f, 26.0f, r.getHeight() - 10.0f };
 }
 
 void InstrumentComponent::Row::resized()
 {
-    auto r = getLocalBounds().reduced (2, 3);
-    soloButton.setBounds (r.removeFromRight (22));
-    r.removeFromRight (3);
-    muteButton.setBounds (r.removeFromRight (22));
+    auto r = getLocalBounds().reduced (6, 2);
+    r = r.withSizeKeepingCentre (r.getWidth(), juce::jmin (r.getHeight() - 8, 20));
+    soloButton.setBounds (r.removeFromRight (20));
+    r.removeFromRight (4);
+    muteButton.setBounds (r.removeFromRight (20));
 }
 
 void InstrumentComponent::Row::refresh()
@@ -162,11 +170,13 @@ void InstrumentComponent::Row::refresh()
 
     const bool selected = owner.state.voice == voice;
     const bool sample = owner.proc.getSamplePath (voice).isNotEmpty();
+    const bool muted = owner.proc.apvts.getRawParameterValue (ids::mute (voice))->load() > 0.5f;
     const int note = owner.proc.getVoiceNote (voice);
-    if (flash > 0.0f || selected != shownSelected || sample != shownSample || note != shownNote)
+    if (flash > 0.0f || selected != shownSelected || sample != shownSample || muted != shownMuted || note != shownNote)
     {
         shownSelected = selected;
         shownSample = sample;
+        shownMuted = muted;
         shownNote = note;
         repaint();
     }
@@ -174,38 +184,34 @@ void InstrumentComponent::Row::refresh()
 
 void InstrumentComponent::Row::paint (juce::Graphics& g)
 {
-    const auto r = getLocalBounds().toFloat();
+    // A module: outlined when idle, filled with ink when selected.
+    const auto r = getLocalBounds().toFloat().reduced (0.75f, 2.0f);
     const bool selected = owner.state.voice == voice;
+    g.setColour (selected ? colours::ink : (isMouseOver() ? colours::hover : colours::paper));
+    g.fillRoundedRectangle (r, 5.0f);
+    g.setColour (selected ? colours::ink : colours::line);
+    g.drawRoundedRectangle (r, 5.0f, 1.0f);
 
-    // Selected voice sits in a shallow recess, matching its grid row.
-    if (selected || isMouseOver())
-    {
-        g.setColour (juce::Colours::black.withAlpha (selected ? 0.07f : 0.035f));
-        g.fillRoundedRectangle (r, 4.0f);
-    }
+    drawBadge (g, badgeArea(), voice);
 
-    // Activity LED, then the voice name printed on the plate.
-    drawLed (g, { 11.0f, r.getCentreY() }, 3.0f, colours::accent, flash);
-
-    auto text = getLocalBounds().withTrimmedLeft (24).withTrimmedRight (54);
     const auto& spec = kVoiceSpecs[(size_t) voice];
-    g.setColour (selected ? colours::ink : colours::textDim);
+    auto text = getLocalBounds().withLeft ((int) badgeArea().getRight() + 8).withRight (muteButton.getX() - 14);
+    const auto nameColour = selected ? colours::paper : colours::ink;
+    g.setColour (shownMuted ? (selected ? colours::grey : colours::greyLight) : nameColour);
     g.setFont (font (11.5f, true).withExtraKerningFactor (0.04f));
-    g.drawText (juce::String (spec.name).toUpperCase(), text, juce::Justification::centredLeft);
-    if (selected)
-    {
-        g.setColour (colours::accent);
-        g.fillRect ((float) text.getX(), r.getCentreY() + 8.0f, 14.0f, 2.0f);
-    }
+    g.drawFittedText (juce::String (spec.name).toUpperCase(), text, juce::Justification::centredLeft, 1, 0.8f);
 
-    // Small badge: sample-based voice or missing sample.
+    // Sample tag under the name: sample-based voice or missing file.
     if (shownSample)
     {
         const bool missing = owner.proc.isSampleMissing (voice);
-        g.setColour (missing ? colours::mute : colours::accentHot);
-        g.setFont (font (9.0f, true));
-        g.drawText (missing ? "MISSING" : "SMP", text, juce::Justification::centredRight);
+        g.setColour (missing ? colours::danger : (selected ? colours::accent : colours::accentText));
+        g.setFont (labelFont (8.5f));
+        g.drawText (missing ? "MISSING" : "SAMPLE", text.withTrimmedTop (text.getHeight() / 2 + 5), juce::Justification::topLeft);
     }
+
+    // Activity dot: lights on each hit.
+    drawLed (g, { (float) muteButton.getX() - 8.0f, r.getCentreY() }, 3.0f, colours::accent, flash);
 }
 
 void InstrumentComponent::Row::mouseDown (const juce::MouseEvent& e)
@@ -218,8 +224,8 @@ void InstrumentComponent::Row::mouseDown (const juce::MouseEvent& e)
         return;
     }
 
-    // Clicking the pad (or anywhere with Alt) auditions the voice.
-    if (e.x < 30 || e.mods.isAltDown())
+    // Clicking the badge (or anywhere with Alt) auditions the voice.
+    if (badgeArea().contains (e.position) || e.mods.isAltDown())
         owner.proc.triggerVoice (voice, 0.85f);
 }
 

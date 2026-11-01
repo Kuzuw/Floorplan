@@ -363,11 +363,12 @@ FP_TEST (parameters_are_automatable)
 
 // Renders the real editor offscreen to a PNG (used for docs screenshots and
 // as a smoke test that the whole UI can be constructed and painted).
-static int renderScreenshot (const juce::File& target, float scale)
+static int renderScreenshot (const juce::File& target, float scale, bool advanced)
 {
     auto p = makeProcessor();
     p->setInternalPlaying (true);
     processBlocks (*p, 40);
+    p->apvts.state.setProperty ("uiAdvancedMode", advanced, nullptr);
 
     std::unique_ptr<juce::AudioProcessorEditor> editor (p->createEditor());
     editor->setSize (1280, 800);
@@ -386,6 +387,8 @@ int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juce;
     if (argc > 2 && std::strcmp (argv[1], "--screenshot") == 0)
-        return renderScreenshot (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]), argc > 3 ? (float) std::atof (argv[3]) : 1.0f);
+        return renderScreenshot (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]),
+                                 argc > 3 ? (float) std::atof (argv[3]) : 1.0f,
+                                 argc > 4 && std::strcmp (argv[4], "--advanced") == 0);
     return fptest::runMain (argc, argv);
 }

@@ -5,7 +5,8 @@
 namespace fp::ui
 {
 
-// Top bar: logo, kit presets, undo/redo, transport, tempo, CPU and menu.
+// Top bar: logo, kit presets, undo/redo, display (position, clock, tempo),
+// transport, swing, CPU, Advanced Mode and settings.
 class HeaderComponent final : public juce::Component
 {
 public:
@@ -13,9 +14,11 @@ public:
 
     void refresh();                    // called from the editor timer (30 Hz)
     void updatePresetList();
+    void setAdvanced (bool advanced);  // reflect the mode without notifying
 
-    std::function<void()> onMenu;      // settings menu, handled by the main component
-    std::function<void()> onUndoRedo;  // pattern view needs a refresh
+    std::function<void()> onMenu;            // settings menu, handled by the main component
+    std::function<void()> onUndoRedo;        // pattern view needs a refresh
+    std::function<void (bool)> onAdvanced;   // Advanced Mode toggled by the user
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -47,10 +50,10 @@ private:
     juce::ComboBox presetBox;
     juce::TextButton prevButton { "<" }, nextButton { ">" }, saveButton { "SAVE" };
     juce::TextButton undoButton { "UNDO" }, redoButton { "REDO" };
-    juce::TextButton playButton { "PLAY" }, menuButton { "MENU" };
+    juce::TextButton playButton { "PLAY" }, menuButton { "SETTINGS" }, advancedButton { "ADVANCED" };
     BpmDisplay bpm { proc };
-    juce::Rectangle<int> plateArea() const;
-    juce::Rectangle<int> lcdArea, cpuArea;
+    Knob swingKnob;
+    juce::Rectangle<int> logoArea, lcdArea, cpuArea;
     juce::String status;
     bool statusIsLearn = false;
     int shownCpu = -1;

@@ -9,7 +9,8 @@ FloorplanEditor::FloorplanEditor (FloorplanProcessor& p) : AudioProcessorEditor 
 
     constexpr int w = ui::MainComponent::kDesignWidth, h = ui::MainComponent::kDesignHeight;
     setResizable (true, true);
-    setResizeLimits (w * 3 / 5, h * 3 / 5, w * 2, h * 2);
+    // Below 75% the smallest labels would drop under ~8 px.
+    setResizeLimits (w * 3 / 4, h * 3 / 4, w * 2, h * 2);
     if (auto* c = getConstrainer())
         c->setFixedAspectRatio ((double) w / (double) h);
     setSize (w * 9 / 10, h * 9 / 10);

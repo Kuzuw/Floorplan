@@ -33,6 +33,7 @@ public:
 
 private:
     void timerCallback() override;
+    void setAdvanced (bool shouldBeAdvanced);
     void showSettingsMenu();
     void chooseSample (int voice);
     void loadSampleFile (int voice, const juce::File& file);
@@ -53,6 +54,8 @@ private:
     MixerComponent mixer { proc, state };
     std::unique_ptr<juce::FileChooser> chooser;
     juce::TooltipWindow tooltips { this, 600 };
+    juce::Rectangle<int> sequencerPanel;
+    bool advanced = false;
 };
 
 } // namespace fp::ui

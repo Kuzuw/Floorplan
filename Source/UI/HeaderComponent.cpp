@@ -4,7 +4,7 @@
 namespace fp::ui
 {
 
-HeaderComponent::HeaderComponent (FloorplanProcessor& p) : proc (p)
+HeaderComponent::HeaderComponent (FloorplanProcessor& p) : proc (p), swingKnob (p, ids::swing, "Swing")
 {
     addAndMakeVisible (presetBox);
     presetBox.setTooltip ("Kit preset (sound of all voices + master)");
@@ -15,7 +15,7 @@ HeaderComponent::HeaderComponent (FloorplanProcessor& p) : proc (p)
             proc.presets.load (idx);
     };
 
-    for (auto* b : { &prevButton, &nextButton, &saveButton, &undoButton, &redoButton, &playButton, &menuButton })
+    for (auto* b : { &prevButton, &nextButton, &saveButton, &undoButton, &redoButton, &playButton, &menuButton, &advancedButton })
         addAndMakeVisible (b);
 
     prevButton.setTooltip ("Previous kit");
@@ -24,7 +24,9 @@ HeaderComponent::HeaderComponent (FloorplanProcessor& p) : proc (p)
     undoButton.setTooltip ("Undo pattern edit (Ctrl+Z)");
     redoButton.setTooltip ("Redo pattern edit (Ctrl+Y)");
     playButton.setTooltip ("Internal transport (Space). In a DAW the host transport takes priority.");
-    menuButton.setTooltip ("Patterns, MIDI and settings");
+    menuButton.setTooltip ("Patterns, kits, MIDI and shortcuts");
+    advancedButton.setTooltip ("Advanced Mode: a wider sound panel with every control of the selected instrument");
+    swingKnob.setTooltip ("Swing: delays every second step");
 
     prevButton.onClick = [this] { proc.presets.previous(); updatePresetList(); };
     nextButton.onClick = [this] { proc.presets.next(); updatePresetList(); };
@@ -33,11 +35,22 @@ HeaderComponent::HeaderComponent (FloorplanProcessor& p) : proc (p)
     redoButton.onClick = [this] { if (proc.patterns.redo() && onUndoRedo) onUndoRedo(); };
     playButton.onClick = [this] { proc.setInternalPlaying (! proc.isInternalPlaying()); };
     menuButton.onClick = [this] { if (onMenu) onMenu(); };
-    setKeyStyle (playButton, KeyStyle::orange);
+    advancedButton.setClickingTogglesState (true);
+    advancedButton.setColour (juce::TextButton::buttonOnColourId, colours::accent);
+    advancedButton.onClick = [this] { if (onAdvanced) onAdvanced (advancedButton.getToggleState()); };
+    playButton.setColour (juce::TextButton::buttonOnColourId, colours::accent);
     setKeyStyle (menuButton, KeyStyle::dark);
 
+    swingKnob.setLayout (Knob::Layout::compact);
+    swingKnob.setCap (colours::accent);
+    addAndMakeVisible (swingKnob);
     addAndMakeVisible (bpm);
     updatePresetList();
+}
+
+void HeaderComponent::setAdvanced (bool advanced)
+{
+    advancedButton.setToggleState (advanced, juce::dontSendNotification);
 }
 
 void HeaderComponent::updatePresetList()
@@ -90,7 +103,7 @@ void HeaderComponent::refresh()
     if (presetBox.getSelectedItemIndex() != proc.presets.getCurrentIndex())
         presetBox.setSelectedItemIndex (proc.presets.getCurrentIndex(), juce::dontSendNotification);
 
-    // Display state: pattern.step readout, transport and clock icons, or the
+    // Display state: pattern.step readout, transport and clock source, or the
     // MIDI-learn prompt. Encoded as one string so it repaints only on change.
     const bool learn = proc.isLearning();
     const bool running = proc.isTransportRunning() && proc.getPlayingStep() >= 0;
@@ -116,52 +129,50 @@ void HeaderComponent::refresh()
     bpm.refresh();
 }
 
-juce::Rectangle<int> HeaderComponent::plateArea() const
-{
-    // The display module plate, aligned with the plates below it.
-    return getLocalBounds().withTrimmedTop (10).reduced (14, 0);
-}
-
 void HeaderComponent::resized()
 {
-    auto r = plateArea().reduced (18, 9);
-    r.removeFromLeft (190); // wordmark
+    auto r = getLocalBounds().reduced (16, 9);
+    r.removeFromBottom (1); // divider
+    auto button = [] (juce::Rectangle<int> area) { return area.withSizeKeepingCentre (area.getWidth(), 30); };
 
-    auto presetArea = r.removeFromLeft (330);
-    prevButton.setBounds (presetArea.removeFromLeft (30));
-    presetArea.removeFromLeft (5);
-    saveButton.setBounds (presetArea.removeFromRight (54));
-    presetArea.removeFromRight (5);
-    nextButton.setBounds (presetArea.removeFromRight (30));
-    presetArea.removeFromRight (5);
-    presetBox.setBounds (presetArea);
-
+    logoArea = r.removeFromLeft (150);
+    r.removeFromLeft (12);
+    prevButton.setBounds (button (r.removeFromLeft (28)));
+    r.removeFromLeft (4);
+    presetBox.setBounds (button (r.removeFromLeft (164)));
+    r.removeFromLeft (4);
+    nextButton.setBounds (button (r.removeFromLeft (28)));
+    r.removeFromLeft (4);
+    saveButton.setBounds (button (r.removeFromLeft (50)));
     r.removeFromLeft (14);
-    undoButton.setBounds (r.removeFromLeft (54));
-    r.removeFromLeft (5);
-    redoButton.setBounds (r.removeFromLeft (54));
+    undoButton.setBounds (button (r.removeFromLeft (50)));
+    r.removeFromLeft (4);
+    redoButton.setBounds (button (r.removeFromLeft (50)));
+    r.removeFromLeft (14);
 
-    menuButton.setBounds (r.removeFromRight (62));
+    menuButton.setBounds (button (r.removeFromRight (82)));
+    r.removeFromRight (6);
+    advancedButton.setBounds (button (r.removeFromRight (92)));
+    r.removeFromRight (14);
+    cpuArea = r.removeFromRight (38);
     r.removeFromRight (10);
-    cpuArea = r.removeFromRight (40);
-    r.removeFromRight (10);
-    playButton.setBounds (r.removeFromRight (74));
+    swingKnob.setBounds (r.removeFromRight (52));
+    r.removeFromRight (6);
+    playButton.setBounds (button (r.removeFromRight (64)));
     r.removeFromRight (12);
-    r.removeFromLeft (14);
 
     lcdArea = r;
-    auto glass = r.reduced (5);
-    bpm.setBounds (glass.removeFromRight (128));
+    bpm.setBounds (r.reduced (6, 5).removeFromRight (108));
 }
 
 void HeaderComponent::paint (juce::Graphics& g)
 {
-    // Display module plate (the chassis around it is painted by the parent).
-    drawPanel (g, plateArea(), {});
+    g.setColour (colours::line);
+    g.fillRect (0, getHeight() - 1, getWidth(), 1);
 
-    // Wordmark: four stacked "floor" bars, name, and the model line in orange.
-    auto logo = plateArea().reduced (18, 9).removeFromLeft (184);
-    auto mark = logo.removeFromLeft (22).toFloat().reduced (0.0f, 2.0f);
+    // Wordmark: four stacked "floor" bars, the name and the model line.
+    auto logo = logoArea;
+    auto mark = logo.removeFromLeft (20).toFloat().withSizeKeepingCentre (20.0f, 26.0f);
     for (int i = 0; i < 4; ++i)
     {
         const float h = mark.getHeight() / 4.0f;
@@ -169,34 +180,35 @@ void HeaderComponent::paint (juce::Graphics& g)
         g.fillRect (mark.getX(), mark.getY() + (float) i * h + 0.75f, mark.getWidth() * (0.45f + 0.18f * (float) i), h - 1.5f);
     }
     logo.removeFromLeft (10);
+    auto text = logo.withSizeKeepingCentre (logo.getWidth(), 36);
     g.setColour (colours::ink);
-    g.setFont (font (23.0f, true).withExtraKerningFactor (-0.02f));
-    g.drawText ("FLOORPLAN", logo.removeFromTop (24), juce::Justification::bottomLeft);
-    g.setColour (colours::accentHot);
-    g.setFont (font (10.5f, true).withExtraKerningFactor (0.08f));
-    g.drawText ("DRUM COMPUTER  FP-1", logo, juce::Justification::topLeft);
+    g.setFont (font (21.0f, true).withExtraKerningFactor (-0.01f));
+    g.drawText ("FLOORPLAN", text.removeFromTop (22), juce::Justification::bottomLeft);
+    g.setColour (colours::grey);
+    g.setFont (labelFont (9.5f));
+    g.drawText ("FP-1  DRUM COMPUTER", text, juce::Justification::topLeft);
 
-    // Display: pattern.step on the left, transport icons, BPM (child) on the right.
-    const auto glass = drawLcd (g, lcdArea.toFloat());
+    // Display: pattern.step, transport and clock source; BPM (child) on the right.
+    const auto glass = drawScreen (g, lcdArea.toFloat());
     const auto fields = juce::StringArray::fromTokens (status, "|", {});
-    auto left = glass.withRight ((float) bpm.getX() - 6.0f).reduced (8.0f, 4.0f);
-    const auto unlit = juce::Colours::white.withAlpha (0.1f); // printed-but-off LCD icons
+    auto left = glass.withRight ((float) bpm.getX() - 6.0f).reduced (6.0f, 3.0f);
+    const auto unlit = colours::screenGhost;
 
-    auto readout = left.removeFromLeft (74.0f);
-    g.setColour (colours::lcdDim);
-    g.setFont (monoFont (8.5f, true));
-    g.drawText ("PAT.STEP", readout.removeFromTop (9.0f), juce::Justification::centredLeft);
-    drawSevenSegment (g, fields[0], readout.withTrimmedTop (2.0f), colours::lcdText, juce::Justification::left);
+    auto readout = left.removeFromLeft (70.0f);
+    g.setColour (colours::screenDim);
+    g.setFont (monoFont (9.0f, true));
+    g.drawText ("PAT.STEP", readout.removeFromTop (10.0f), juce::Justification::centredLeft);
+    drawSevenSegment (g, fields[0], readout.withTrimmedTop (3.0f), colours::screenText, juce::Justification::left);
 
-    left.removeFromLeft (14.0f);
+    left.removeFromLeft (12.0f);
     const bool running = fields.contains ("RUN");
     juce::Path play;
-    const auto playBox = left.removeFromLeft (12.0f).withSizeKeepingCentre (10.0f, 12.0f);
+    const auto playBox = left.removeFromLeft (11.0f).withSizeKeepingCentre (9.0f, 11.0f);
     play.addTriangle (playBox.getTopLeft(), playBox.getBottomLeft(), { playBox.getRight(), playBox.getCentreY() });
     g.setColour (running ? colours::accent : unlit);
     g.fillPath (play);
 
-    left.removeFromLeft (10.0f);
+    left.removeFromLeft (9.0f);
     g.setFont (monoFont (10.0f, true));
     auto column = left.toNearestInt();
     if (statusIsLearn)
@@ -209,18 +221,18 @@ void HeaderComponent::paint (juce::Graphics& g)
         // Clock source: both legends are printed, the active one is lit.
         const bool host = fields.contains ("HOST");
         const auto top = column.removeFromTop (column.getHeight() / 2);
-        g.setColour (host ? colours::lcdText : unlit);
+        g.setColour (host ? colours::screenText : unlit);
         g.drawText ("HOST", top, juce::Justification::bottomLeft);
-        g.setColour (host ? unlit : colours::lcdText);
+        g.setColour (host ? unlit : colours::screenText);
         g.drawText ("INT", column, juce::Justification::topLeft);
     }
 
-    // CPU, printed on the plate.
+    // CPU, printed on the body.
     auto cpu = cpuArea;
-    g.setColour (colours::textDim);
-    g.setFont (font (9.5f, true).withExtraKerningFactor (0.08f));
+    g.setColour (colours::grey);
+    g.setFont (labelFont (9.5f));
     g.drawText ("CPU", cpu.removeFromTop (cpu.getHeight() / 2), juce::Justification::bottomRight);
-    g.setColour (shownCpu > 70 ? colours::mute : colours::text);
+    g.setColour (shownCpu > 70 ? colours::danger : colours::ink);
     g.setFont (monoFont (13.0f, true));
     g.drawText (juce::String (juce::jmax (0, shownCpu)) + "%", cpu, juce::Justification::topRight);
 }
@@ -240,14 +252,14 @@ void HeaderComponent::BpmDisplay::refresh()
 
 void HeaderComponent::BpmDisplay::paint (juce::Graphics& g)
 {
-    // Drawn on the header's display glass: label above, segment digits below.
+    // Drawn on the header's display: label above, segment digits below.
     auto area = getLocalBounds().toFloat().reduced (2.0f, 1.0f);
-    g.setColour (shownHost ? colours::accent : colours::lcdDim);
-    g.setFont (monoFont (8.5f, true));
-    g.drawText (shownHost ? "BPM  HOST" : "BPM", area.removeFromTop (9.0f), juce::Justification::centredRight);
+    g.setColour (shownHost ? colours::accent : colours::screenDim);
+    g.setFont (monoFont (9.0f, true));
+    g.drawText (shownHost ? "BPM  HOST" : "BPM", area.removeFromTop (10.0f), juce::Justification::centredRight);
 
     const auto text = juce::String (shownBpm, 1).paddedLeft (' ', 5);
-    drawSevenSegment (g, text, area.withTrimmedTop (2.0f).withTrimmedRight (2.0f), colours::lcdText);
+    drawSevenSegment (g, text, area.withTrimmedTop (3.0f).withTrimmedRight (2.0f), colours::screenText);
 }
 
 void HeaderComponent::BpmDisplay::mouseDown (const juce::MouseEvent&)

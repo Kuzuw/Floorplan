@@ -5,7 +5,8 @@
 namespace fp::ui
 {
 
-// Eight channel strips (fader, pan, meter, mute/solo, output) + master.
+// Eight channel strips (pan, fader, meter) + master (volume, clip, comp, meter).
+// Mute and solo live on the instrument modules.
 class MixerComponent final : public juce::Component, private juce::ChangeListener
 {
 public:
@@ -32,7 +33,6 @@ private:
         std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> faderAttachment;
         Knob pan;
         LevelMeter meter;
-        ParamToggle mute, solo;
     };
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override { repaint(); for (auto* s : strips) s->repaint(); }

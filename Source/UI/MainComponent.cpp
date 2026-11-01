@@ -6,6 +6,13 @@
 namespace fp::ui
 {
 
+namespace
+{
+// Editor mode, stored on the parameter state tree so it is saved with the
+// project. It is not a parameter: it never affects the sound or automation.
+const juce::Identifier kAdvancedProperty { "uiAdvancedMode" };
+} // namespace
+
 MainComponent::MainComponent (FloorplanProcessor& p) : proc (p)
 {
     setLookAndFeel (&lookAndFeel);
@@ -14,6 +21,14 @@ MainComponent::MainComponent (FloorplanProcessor& p) : proc (p)
     for (auto* c : std::initializer_list<juce::Component*> { &header, &instruments, &sequencer, &sound, &groove, &mixer })
         addAndMakeVisible (c);
 
+    advanced = (bool) proc.apvts.state.getProperty (kAdvancedProperty, false);
+    header.setAdvanced (advanced);
+    sound.setAdvanced (advanced);
+    header.onAdvanced = [this] (bool a)
+    {
+        proc.apvts.state.setProperty (kAdvancedProperty, a, nullptr);
+        setAdvanced (a);
+    };
     header.onMenu = [this] { showSettingsMenu(); };
     header.onUndoRedo = [this] { sequencer.patternChanged(); };
     instruments.onPatternEdited = [this] { patternEdited(); };
@@ -32,43 +47,64 @@ MainComponent::~MainComponent()
     setLookAndFeel (nullptr);
 }
 
+void MainComponent::setAdvanced (bool shouldBeAdvanced)
+{
+    if (advanced == shouldBeAdvanced)
+        return;
+    advanced = shouldBeAdvanced;
+    header.setAdvanced (advanced);
+    sound.setAdvanced (advanced);
+    resized();
+    repaint();
+}
+
 void MainComponent::paint (juce::Graphics& g)
 {
     g.fillAll (colours::background);
-    drawPlasticTexture (g, getLocalBounds());
 
-    // Sequencer module: one plate for the voice list and the step grid.
-    const auto top = instruments.getBounds().getUnion (sequencer.getBounds()).expanded (12, 9);
-    drawPanel (g, top, {});
-    g.setColour (colours::borderLight.withAlpha (0.5f));
-    g.fillRect (instruments.getRight() + 9, top.getY() + 14, 1, top.getHeight() - 28);
+    // Sequencer section: one surface for the track modules and the step grid.
+    drawPanel (g, sequencerPanel, {});
+    g.setColour (colours::line);
+    g.fillRect (instruments.getRight() + 7, sequencerPanel.getY() + 12, 1, sequencerPanel.getHeight() - 24);
 }
 
 void MainComponent::resized()
 {
     auto r = getLocalBounds();
-    header.setBounds (r.removeFromTop (66));
-    r.reduce (14, 12);
+    header.setBounds (r.removeFromTop (60));
+    r.reduce (16, 12);
 
-    auto bottom = r.removeFromBottom (300);
-    r.removeFromBottom (14);
+    auto bottom = r.removeFromBottom (270);
+    r.removeFromBottom (12);
 
-    auto top = r.reduced (10, 8);
-    auto instrumentArea = top.removeFromLeft (176);
-    top.removeFromLeft (18);
+    sequencerPanel = r;
+    auto top = r.reduced (12, 10);
+    auto instrumentArea = top.removeFromLeft (184);
+    top.removeFromLeft (14);
     sequencer.setBounds (top);
     instruments.setBounds (instrumentArea);
     instruments.setRowHeight (sequencer.getY() + sequencer.getGridTop() - instruments.getY(), sequencer.getRowHeight());
 
-    sound.setBounds (bottom.removeFromLeft (470));
-    bottom.removeFromLeft (12);
-    groove.setBounds (bottom.removeFromLeft (270));
-    bottom.removeFromLeft (12);
+    // Advanced Mode: the sound panel takes the groove section's place.
+    constexpr int soundW = 480, grooveW = 260, gap = 12;
+    groove.setVisible (! advanced);
+    sound.setBounds (bottom.removeFromLeft (advanced ? soundW + gap + grooveW : soundW));
+    bottom.removeFromLeft (gap);
+    if (! advanced)
+    {
+        groove.setBounds (bottom.removeFromLeft (grooveW));
+        bottom.removeFromLeft (gap);
+    }
     mixer.setBounds (bottom);
 }
 
 void MainComponent::timerCallback()
 {
+    // The mode can change underneath us when the host restores a project.
+    const bool storedAdvanced = (bool) proc.apvts.state.getProperty (kAdvancedProperty, false);
+    if (storedAdvanced != advanced)
+        setAdvanced (storedAdvanced);
+
     header.refresh();
     instruments.refresh();
     sequencer.refresh();

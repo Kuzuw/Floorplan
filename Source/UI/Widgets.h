@@ -25,20 +25,22 @@ struct UiState : juce::ChangeBroadcaster
 // Common right-click menu for any parameter control.
 void showParameterMenu (FloorplanProcessor& proc, const juce::String& paramId, juce::Component& target);
 
-// Rotary knob with its label underneath. The value replaces the label while
-// hovering or dragging. In bar style it is a tall vertical bar with the name
-// above and the value always shown below. Double-click resets, right-click
-// opens MIDI learn.
+// Rotary encoder bound to a parameter. The full layout prints the name above
+// and the value below (orange while dragging); the compact layout shows the
+// name underneath and swaps in the value while hovering or dragging.
+// Double-click resets, right-click opens the parameter menu (MIDI learn).
 class Knob final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
+    enum class Layout { full, compact };
+
     Knob (FloorplanProcessor& p, const juce::String& paramId = {}, const juce::String& label = {}, bool bipolar = false);
     ~Knob() override;
 
     void bind (const juce::String& paramId, const juce::String& label, bool bipolar = false);
     void unbind();
-    void setBarStyle (bool shouldBeBar);
-    void setCap (juce::Colour capColour); // knob cap plastic colour
+    void setLayout (Layout newLayout);
+    void setCap (juce::Colour capColour); // cap fill colour
     const juce::String& getParamId() const noexcept { return paramId; }
 
     void paint (juce::Graphics&) override;
@@ -63,7 +65,8 @@ private:
     KnobSlider slider;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
     juce::String paramId, label;
-    bool hovering = false, dragging = false, bar = false;
+    Layout layout = Layout::full;
+    bool hovering = false, dragging = false;
 };
 
 // Toggle button bound to a bool parameter.

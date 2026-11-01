@@ -16,47 +16,40 @@ void setupFader (juce::Slider& s)
 
 MixerComponent::Strip::Strip (FloorplanProcessor& p, UiState& s, int v)
     : proc (p), state (s), voice (v),
-      pan (p, ids::pan (v), "Pan", true),
-      mute (p, "M", colours::mute),
-      solo (p, "S", colours::solo)
+      pan (p, ids::pan (v), "Pan", true)
 {
     setupFader (fader);
     faderAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.apvts, ids::level (v), fader);
     if (auto* param = p.apvts.getParameter (ids::level (v)))
         fader.setDoubleClickReturnValue (true, param->convertFrom0to1 (param->getDefaultValue()));
-    fader.setTooltip (juce::String (kVoiceSpecs[(size_t) v].name) + " level");
+    fader.setTooltip (juce::String (kVoiceSpecs[(size_t) v].name) + " level (double-click resets)");
+    pan.setLayout (Knob::Layout::compact);
 
-    mute.bind (ids::mute (v));
-    solo.bind (ids::solo (v));
-    for (auto* c : std::initializer_list<juce::Component*> { &fader, &pan, &meter, &mute, &solo })
+    for (auto* c : std::initializer_list<juce::Component*> { &fader, &pan, &meter })
         addAndMakeVisible (c);
 }
 
 void MixerComponent::Strip::resized()
 {
     auto r = getLocalBounds().reduced (2, 0);
-    r.removeFromBottom (16); // name
-    auto buttons = r.removeFromBottom (20);
-    mute.setBounds (buttons.removeFromLeft (buttons.getWidth() / 2).reduced (1, 0));
-    solo.setBounds (buttons.reduced (1, 0));
+    r.removeFromBottom (22); // badge
     r.removeFromBottom (4);
     pan.setBounds (r.removeFromTop (46));
-    r.removeFromTop (2);
-    meter.setBounds (r.removeFromRight (6).reduced (0, 4));
+    r.removeFromTop (4);
+    meter.setBounds (r.removeFromRight (4).reduced (0, 5));
     fader.setBounds (r);
 }
 
 void MixerComponent::Strip::paint (juce::Graphics& g)
 {
+    // Selected channel: outlined in ink, like its instrument module.
     const bool selected = state.voice == voice;
     if (selected)
     {
-        g.setColour (juce::Colours::black.withAlpha (0.07f));
-        g.fillRoundedRectangle (getLocalBounds().toFloat(), 4.0f);
+        g.setColour (colours::ink);
+        g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (0.75f), 5.0f, 1.5f);
     }
-    g.setColour (selected ? colours::accentHot : colours::textDim);
-    g.setFont (font (10.5f, true));
-    g.drawText (kVoiceSpecs[(size_t) voice].shortName, getLocalBounds().removeFromBottom (16), juce::Justification::centred);
+    drawBadge (g, getLocalBounds().removeFromBottom (22).toFloat().reduced (5.0f, 3.0f), voice);
 }
 
 // ---------------------------------------------------------------------------
@@ -74,8 +67,6 @@ MixerComponent::MixerComponent (FloorplanProcessor& p, UiState& s)
     masterFader.setTooltip ("Master volume");
     clipKnob.setTooltip ("Master soft clip / saturation (0 = off)");
     compKnob.setTooltip ("Master bus compressor amount (0 = off)");
-    clipKnob.setCap (colours::keyDark);
-    compKnob.setCap (colours::keyDark);
 
     addAndMakeVisible (masterFader);
     addAndMakeVisible (clipKnob);
@@ -98,22 +89,22 @@ void MixerComponent::refresh()
 
 void MixerComponent::resized()
 {
-    auto r = getLocalBounds().reduced (10, 8);
-    r.removeFromTop (22);
+    auto r = getLocalBounds().reduced (12, 10);
+    r.removeFromTop (24);
 
-    auto master = r.removeFromRight (124);
-    r.removeFromRight (10);
+    auto master = r.removeFromRight (120);
+    r.removeFromRight (12);
     const int w = r.getWidth() / kNumVoices;
     for (auto* s : strips)
         s->setBounds (r.removeFromLeft (w).reduced (1, 0));
 
-    master.removeFromBottom (16);
-    auto knobs = master.removeFromLeft (52);
-    clipKnob.setBounds (knobs.removeFromTop (60));
-    knobs.removeFromTop (6);
-    compKnob.setBounds (knobs.removeFromTop (60));
+    master.removeFromBottom (26);
+    auto knobs = master.removeFromLeft (54);
+    clipKnob.setBounds (knobs.removeFromTop (88));
+    knobs.removeFromTop (8);
+    compKnob.setBounds (knobs.removeFromTop (88));
     master.removeFromLeft (8);
-    masterMeter.setBounds (master.removeFromRight (16).reduced (0, 4));
+    masterMeter.setBounds (master.removeFromRight (12).reduced (0, 5));
     master.removeFromRight (4);
     masterFader.setBounds (master);
 }
@@ -122,12 +113,12 @@ void MixerComponent::paint (juce::Graphics& g)
 {
     drawPanel (g, getLocalBounds(), "Mixer");
 
-    auto masterArea = getLocalBounds().reduced (10, 8).removeFromRight (124);
-    g.setColour (colours::border);
-    g.fillRect (masterArea.getX() - 6, masterArea.getY() + 22, 1, masterArea.getHeight() - 22);
+    auto masterArea = getLocalBounds().reduced (12, 10).removeFromRight (120);
+    g.setColour (colours::line);
+    g.fillRect (masterArea.getX() - 6, masterArea.getY() + 24, 1, masterArea.getHeight() - 24);
     g.setColour (colours::ink);
-    g.setFont (font (10.5f, true).withExtraKerningFactor (0.06f));
-    g.drawText ("MASTER", masterArea.removeFromBottom (16), juce::Justification::centred);
+    g.setFont (labelFont (11.0f));
+    g.drawText ("MASTER", masterArea.removeFromBottom (22), juce::Justification::centred);
 }
 
 } // namespace fp::ui

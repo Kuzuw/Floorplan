@@ -5,8 +5,9 @@
 namespace fp::ui
 {
 
-// Column of the eight drum voices: trigger pad, name (select), mute, solo,
-// activity LED. Right-click a row for samples, MIDI note learn and track tools.
+// Column of eight instrument modules aligned with the grid rows: family badge
+// (click to audition), name (click to select), activity dot, mute and solo.
+// Right-click a module for samples, MIDI note learn and track tools.
 class InstrumentComponent final : public juce::Component, private juce::ChangeListener
 {
 public:
@@ -25,7 +26,7 @@ public:
     void resized() override;
 
 private:
-    class Row final : public juce::Component
+    class Row final : public juce::Component, public juce::SettableTooltipClient
     {
     public:
         Row (InstrumentComponent& owner, int voice);
@@ -33,13 +34,14 @@ private:
         void resized() override;
         void mouseDown (const juce::MouseEvent&) override;
         void refresh();
+        juce::Rectangle<float> badgeArea() const;
 
         InstrumentComponent& owner;
         const int voice;
         ParamToggle muteButton, soloButton;
         float flash = 0.0f;
         uint32_t lastCount = 0;
-        bool shownSelected = false, shownSample = false;
+        bool shownSelected = false, shownSample = false, shownMuted = false;
         int shownNote = -1;
     };
 

@@ -5,8 +5,8 @@
 namespace fp::ui
 {
 
-// Groove and pattern section: swing, groove template, step resolution,
-// accent, randomization, track rotation and pattern chaining.
+// Groove and pattern section: groove template, step resolution, accent,
+// randomization, track rotation and pattern chaining. (Swing is in the top bar.)
 class GrooveComponent final : public juce::Component
 {
 public:
@@ -19,7 +19,7 @@ public:
 
 private:
     FloorplanProcessor& proc;
-    Knob swingKnob, accentKnob, randomKnob, seedKnob;
+    Knob accentKnob, randomKnob, seedKnob;
     ParamCombo grooveBox, resolutionBox;
     juce::TextButton rotateLeft { "<" }, rotateRight { ">" };
     ParamToggle chainButton;

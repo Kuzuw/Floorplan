@@ -6,6 +6,19 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Advanced Mode (ADVANCED in the top bar). The sound panel widens into a tabbed inspector (Source, Tone, Output) for the selected track, and the sequencer stays where it is. The mode is saved with the project and changes no sound or parameter.
+
+### Changed
+
+- Swing moved from the groove panel to the top bar.
+- New flat interface: a cream body, black outlined keys and step pads, one orange accent, and colour-coded track badges (yellow for tonal voices, red for noise, blue for metal).
+- Step pads show velocity as fill height. The selected step gets an orange ring.
+- Knobs show their value while dragging. Compact knobs show it on hover.
+- Track modules hold mute, solo, an activity dot and an audition badge. The mixer strips keep pan, fader and meter.
+- The minimum window size is now 75% of the design size (was 60%), so labels stay readable.
+
 ## [0.1.0] - 2026-11-01
 
 First public release.

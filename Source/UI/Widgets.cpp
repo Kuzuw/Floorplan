@@ -45,7 +45,7 @@ Knob::Knob (FloorplanProcessor& p, const juce::String& id, const juce::String& t
     slider.setVelocityBasedMode (false);
     slider.onDragStart = [this] { dragging = true; repaint(); };
     slider.onDragEnd = [this] { dragging = false; repaint(); };
-    slider.onValueChange = [this] { if (bar || hovering || dragging) repaint(); };
+    slider.onValueChange = [this] { if (layout == Layout::full || hovering || dragging) repaint(); };
     slider.onRightClick = [this] { if (paramId.isNotEmpty()) showParameterMenu (proc, paramId, *this); };
     slider.addMouseListener (this, false);
     addAndMakeVisible (slider);
@@ -85,12 +85,9 @@ void Knob::unbind()
     repaint();
 }
 
-void Knob::setBarStyle (bool shouldBeBar)
+void Knob::setLayout (Layout newLayout)
 {
-    bar = shouldBeBar;
-    slider.setSliderStyle (bar ? juce::Slider::LinearBarVertical : juce::Slider::RotaryHorizontalVerticalDrag);
-    slider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
-    slider.setSliderSnapsToMousePosition (! bar); // bars drag relatively, like the knobs
+    layout = newLayout;
     resized();
     repaint();
 }
@@ -104,41 +101,35 @@ void Knob::setCap (juce::Colour capColour)
 void Knob::resized()
 {
     auto r = getLocalBounds();
-    if (bar)
-    {
-        r.removeFromTop (16);
-        r.removeFromBottom (18);
-        slider.setBounds (r.withSizeKeepingCentre (juce::jmin (r.getWidth() - 6, 46), r.getHeight()));
-        return;
-    }
-    r.removeFromBottom (16);
+    if (layout == Layout::full)
+        r.removeFromTop (15);
+    r.removeFromBottom (15);
     const int size = juce::jmin (r.getWidth(), r.getHeight());
     slider.setBounds (r.withSizeKeepingCentre (size, size));
 }
 
 void Knob::paint (juce::Graphics& g)
 {
-    if (bar)
+    auto r = getLocalBounds();
+    const bool enabled = slider.isEnabled();
+    const bool hasValue = attachment != nullptr;
+    const auto valueText = hasValue ? slider.getTextFromValue (slider.getValue()) : juce::String();
+
+    if (layout == Layout::full)
     {
-        auto r = getLocalBounds();
-        g.setFont (font (10.5f, true));
-        g.setColour (colours::textDim);
-        g.drawFittedText (label.toUpperCase(), r.removeFromTop (16), juce::Justification::centred, 1, 0.7f);
-        if (attachment != nullptr)
-        {
-            g.setFont (monoFont (11.5f, true));
-            g.setColour (dragging ? colours::accentHot : (slider.isEnabled() ? colours::text : colours::textFaint));            g.drawFittedText (slider.getTextFromValue (slider.getValue()), r.removeFromBottom (18),
-                              juce::Justification::centred, 1, 0.6f);
-        }
+        g.setFont (labelFont());
+        g.setColour (enabled ? colours::ink : colours::greyLight);
+        g.drawFittedText (label.toUpperCase(), r.removeFromTop (15), juce::Justification::centred, 1, 0.7f);
+        g.setFont (monoFont (11.5f, true));
+        g.setColour (dragging ? colours::accentText : (enabled ? colours::inkSoft : colours::greyLight));
+        g.drawFittedText (valueText, r.removeFromBottom (15), juce::Justification::centred, 1, 0.6f);
         return;
     }
 
-    const auto textArea = getLocalBounds().removeFromBottom (16);
-    const bool showValue = (hovering || dragging) && attachment != nullptr;
-    g.setFont (font (12.0f, showValue));
-    g.setColour (showValue ? colours::accentHot : colours::textDim);
-    g.drawFittedText (showValue ? slider.getTextFromValue (slider.getValue()) : label,
-                      textArea, juce::Justification::centred, 1, 0.7f);
+    const bool showValue = (hovering || dragging) && hasValue;
+    g.setFont (showValue ? monoFont (11.0f, true) : labelFont (10.0f));
+    g.setColour (showValue ? colours::accentText : (enabled ? colours::grey : colours::greyLight));
+    g.drawFittedText (showValue ? valueText : label.toUpperCase(), r.removeFromBottom (15), juce::Justification::centred, 1, 0.6f);
 }
 
 // ---------------------------------------------------------------------------
@@ -206,14 +197,8 @@ void LevelMeter::setLevels (float left, float right)
 
 void LevelMeter::paint (juce::Graphics& g)
 {
-    // Recessed LED column(s): white segments, orange near 0 dB, red at clip.
-    auto r = getLocalBounds().toFloat();
-    g.setColour (juce::Colours::white.withAlpha (0.5f));
-    g.fillRoundedRectangle (r.translated (0.0f, 1.0f), 2.0f);
-    g.setColour (juce::Colour (0xff1c1b1a));
-    g.fillRoundedRectangle (r, 2.0f);
-
-    const auto inner = r.reduced (1.5f, 2.0f);
+    // Monochrome segment column(s): ink segments, orange near 0 dB, red at clip.
+    const auto inner = getLocalBounds().toFloat();
     const float gap = 1.5f;
     const float barW = (inner.getWidth() - gap * (float) (numChannels - 1)) / (float) numChannels;
     constexpr float segH = 2.0f, segGap = 1.0f;
@@ -230,8 +215,8 @@ void LevelMeter::paint (juce::Graphics& g)
         for (int i = 0; i < n; ++i)
         {
             const float segNorm = (float) (i + 1) / (float) n;
-            const auto colour = segNorm > 0.95f ? colours::meterHot : (segNorm > 0.82f ? colours::accent : colours::meter);
-            g.setColour (i < lit ? colour : colour.withAlpha (0.08f));
+            const auto colour = segNorm > 0.95f ? colours::danger : (segNorm > 0.82f ? colours::accent : colours::ink);
+            g.setColour (i < lit ? colour : colours::line);
             g.fillRect (x, inner.getBottom() - (float) (i + 1) * (segH + segGap) + segGap, barW, segH);
         }
     }
