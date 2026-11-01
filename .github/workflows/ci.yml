@@ -19,9 +19,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-24.04, windows-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DFLOORPLAN_BUILD_PLUGIN=OFF
@@ -52,10 +52,10 @@ jobs:
             os: macos-latest
             configure: -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
           - name: Linux
-            os: ubuntu-latest
+            os: ubuntu-24.04
             configure: -G Ninja
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -73,7 +73,19 @@ jobs:
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.configure }}
 
       - name: Build
-        run: cmake --build build --config Release --parallel
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build build --config Release --parallel 2>&1 | tee build.log
+
+      - name: Report compiler errors
+        # Annotations are visible without signing in, unlike the raw log.
+        if: failure()
+        shell: bash
+        run: |
+          grep -E "(error|fatal error)( C[0-9]+)?:" build.log | sort -u | head -n 25 | while IFS= read -r line; do
+            echo "::error::${line}"
+          done
 
       - name: Test
         if: runner.os != 'Linux'
@@ -84,7 +96,7 @@ jobs:
         run: xvfb-run -a ctest --test-dir build -C Release --output-on-failure
 
       - name: Upload plugin
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: Floorplan-${{ matrix.name }}
           path: |
