@@ -39,6 +39,8 @@ ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 MinVersion=10.0
 WizardStyle=modern
+; The app icon JUCE generates from Resources/icon*.png during the build.
+SetupIconFile={#BuildDir}\..\JuceLibraryCode\icon.ico
 UninstallDisplayName=Floorplan {#AppVersion}
 UninstallDisplayIcon={app}\Floorplan.exe
 

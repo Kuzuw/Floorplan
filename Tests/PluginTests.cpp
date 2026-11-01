@@ -461,9 +461,43 @@ static int renderScreenshot (const juce::File& target, float scale, bool advance
     return ok ? 0 : 1;
 }
 
+// Renders the app icon (Resources/icon*.png): the header's stacked "floor"
+// bars on a cream key with an ink outline. Drawn on a 32-unit grid so the
+// bars sit on whole pixels at 32 px and on half-pixel steps at 16 px.
+static int renderIcon (const juce::File& target, int size)
+{
+    juce::Image image (juce::Image::ARGB, size, size, true);
+    {
+        juce::Graphics g (image);
+        const float u = (float) size / 32.0f;
+        const auto key = juce::Rectangle<float> (0.0f, 0.0f, 32.0f * u, 32.0f * u).reduced (0.5f * u);
+        g.setColour (ui::colours::background);
+        g.fillRoundedRectangle (key, 6.5f * u);
+        g.setColour (ui::colours::ink);
+        g.drawRoundedRectangle (key, 6.5f * u, u);
+
+        // Four bars, 4 units tall with 2-unit gaps, widening by 3 units; the
+        // bottom one orange, as in the header wordmark.
+        for (int i = 0; i < 4; ++i)
+        {
+            g.setColour (i == 3 ? ui::colours::accent : ui::colours::ink);
+            g.fillRect (7.0f * u, (5.0f + 6.0f * (float) i) * u, (9.0f + 3.0f * (float) i) * u, 4.0f * u);
+        }
+    }
+
+    target.deleteFile();
+    juce::FileOutputStream out (target);
+    juce::PNGImageFormat png;
+    const bool ok = out.openedOk() && png.writeImageToStream (image, out);
+    std::printf ("%s %s (%dx%d)\n", ok ? "Wrote" : "FAILED to write", target.getFullPathName().toRawUTF8(), size, size);
+    return ok ? 0 : 1;
+}
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juce;
+    if (argc > 3 && std::strcmp (argv[1], "--icon") == 0)
+        return renderIcon (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]), juce::jlimit (16, 2048, std::atoi (argv[3])));
     if (argc > 2 && std::strcmp (argv[1], "--screenshot") == 0)
         return renderScreenshot (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]),
                                  argc > 3 ? (float) std::atof (argv[3]) : 1.0f,

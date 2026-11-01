@@ -61,6 +61,9 @@ juce_add_plugin(Floorplan
     IS_MIDI_EFFECT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
     COPY_PLUGIN_AFTER_BUILD FALSE
+    # App icon (taskbar, Dock, shortcuts). Rendered by: floorplan_plugin_tests --icon <png> <size>
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
+    ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon-small.png"
     VST3_CATEGORIES Instrument Drum
     MICROPHONE_PERMISSION_ENABLED FALSE)
 

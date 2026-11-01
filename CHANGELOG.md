@@ -6,6 +6,10 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- App icon: the wordmark's stacked bars on a cream key. It shows on the Standalone app's window and taskbar button, its shortcuts, the macOS Dock and the Windows installer.
+
 ## [0.1.2] - 2026-11-01
 
 ### Added
