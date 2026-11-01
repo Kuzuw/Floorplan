@@ -116,11 +116,16 @@ void HeaderComponent::refresh()
     bpm.refresh();
 }
 
+juce::Rectangle<int> HeaderComponent::plateArea() const
+{
+    // The display module plate, aligned with the plates below it.
+    return getLocalBounds().withTrimmedTop (10).reduced (14, 0);
+}
+
 void HeaderComponent::resized()
 {
-    auto r = getLocalBounds().reduced (14, 10);
-    r.removeFromBottom (2); // part line
-    r.removeFromLeft (196); // wordmark
+    auto r = plateArea().reduced (18, 9);
+    r.removeFromLeft (190); // wordmark
 
     auto presetArea = r.removeFromLeft (330);
     prevButton.setBounds (presetArea.removeFromLeft (30));
@@ -151,18 +156,11 @@ void HeaderComponent::resized()
 
 void HeaderComponent::paint (juce::Graphics& g)
 {
-    // Top plate with the moulded part line along its lower edge.
-    const auto bounds = getLocalBounds();
-    g.setColour (colours::panel);
-    g.fillRect (bounds);
-    drawPlasticTexture (g, bounds);
-    g.setColour (juce::Colours::black.withAlpha (0.22f));
-    g.fillRect (bounds.getX(), bounds.getBottom() - 2, bounds.getWidth(), 1);
-    g.setColour (juce::Colours::white.withAlpha (0.5f));
-    g.fillRect (bounds.getX(), bounds.getBottom() - 1, bounds.getWidth(), 1);
+    // Display module plate (the chassis around it is painted by the parent).
+    drawPanel (g, plateArea(), {});
 
     // Wordmark: four stacked "floor" bars, name, and the model line in orange.
-    auto logo = bounds.reduced (14, 11).withTrimmedBottom (2).removeFromLeft (190);
+    auto logo = plateArea().reduced (18, 9).removeFromLeft (184);
     auto mark = logo.removeFromLeft (22).toFloat().reduced (0.0f, 2.0f);
     for (int i = 0; i < 4; ++i)
     {

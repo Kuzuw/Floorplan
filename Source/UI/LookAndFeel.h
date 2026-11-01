@@ -56,7 +56,8 @@ void drawPlasticTexture (juce::Graphics& g, juce::Rectangle<int> area);
 juce::Rectangle<int> drawSectionTitle (juce::Graphics& g, juce::Rectangle<int> area, const juce::String& title,
                                        const juce::String& subtitle = {});
 
-// An inserted plastic plate with a moulded part line; returns the content area.
+// A module plate set into the chassis: sunken groove edge (dark top/left,
+// light bottom/right) and a screw in each corner. Returns the content area.
 juce::Rectangle<int> drawPanel (juce::Graphics& g, juce::Rectangle<int> area, const juce::String& title);
 
 // Smoked-glass display window in a dark bezel; returns the glass area.
@@ -70,11 +71,18 @@ void drawSevenSegment (juce::Graphics& g, const juce::String& text, juce::Rectan
 void drawLed (juce::Graphics& g, juce::Point<float> centre, float radius, juce::Colour colour, float brightness);
 void drawScrew (juce::Graphics& g, juce::Point<float> centre, float radius);
 
-// A physical key: side wall, top face, highlight and contact shadow. Returns
-// the top face so callers can print on it.
+// Key travel: resting, latched (held in by a toggle) or pressed by the mouse.
+enum class KeyState { up, latched, down };
+
+// An extruded keycap in a dark drop well: lower skirt, top face with a
+// vertical falloff and a highlight on the top chamfer. A pressed key's face
+// travels down 3 px over its skirt. Returns the top face to print on.
 juce::Rectangle<float> drawKey (juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour face,
-                                bool pressed, bool hover = false);
-juce::Rectangle<float> keyFace (juce::Rectangle<float> bounds, bool pressed);
+                                KeyState state, bool hover = false);
+juce::Rectangle<float> keyFace (juce::Rectangle<float> bounds, KeyState state);
+
+// Chunky rectangular fader cap with a raised grip ridge and a cast shadow.
+void drawFaderCap (juce::Graphics& g, juce::Rectangle<float> cap, bool vertical, bool enabled);
 
 // Button properties: "key" = "light" (default), "dark" or "orange".
 enum class KeyStyle { light, dark, orange };
@@ -102,6 +110,7 @@ public:
 
 private:
     static juce::Colour faceColour (juce::Button&);
+    static KeyState keyState (juce::Button&, bool down);
 };
 
 } // namespace fp::ui

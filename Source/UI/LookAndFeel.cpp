@@ -82,23 +82,44 @@ juce::Rectangle<int> drawSectionTitle (juce::Graphics& g, juce::Rectangle<int> a
 
 juce::Rectangle<int> drawPanel (juce::Graphics& g, juce::Rectangle<int> area, const juce::String& title)
 {
-    // Inserted plate: slightly lighter than the body, with a moulded part line
-    // (dark outer edge, light inner bevel).
+    // Module plate: a separate moulding set into the chassis. Its edge is a
+    // sunken groove lit from the top left, so the top and left walls fall in
+    // shadow and the bottom and right walls catch the light.
     const auto r = area.toFloat();
-    constexpr float corner = 7.0f;
+    constexpr float corner = 5.0f;
+    juce::Path outline;
+    outline.addRoundedRectangle (r, corner);
+
     g.setColour (colours::panel);
-    g.fillRoundedRectangle (r, corner);
+    g.fillPath (outline);
     {
         juce::Graphics::ScopedSaveState save (g);
-        juce::Path clip;
-        clip.addRoundedRectangle (r, corner);
-        g.reduceClipRegion (clip);
+        g.reduceClipRegion (outline);
         drawPlasticTexture (g, area);
     }
-    g.setColour (juce::Colours::black.withAlpha (0.2f));
-    g.drawRoundedRectangle (r.reduced (0.5f), corner, 1.0f);
-    g.setColour (juce::Colours::white.withAlpha (0.55f));
-    g.drawRoundedRectangle (r.reduced (1.5f), corner - 1.0f, 1.0f);
+
+    // The two sides meet on 45-degree mitres at the top-right and bottom-left corners.
+    const float d = juce::jmin (r.getWidth(), r.getHeight()) * 0.5f;
+    juce::Path shadowSide, lightSide;
+    shadowSide.addQuadrilateral (r.getX(), r.getY(), r.getRight(), r.getY(), r.getRight() - d, r.getY() + d, r.getX() + d, r.getBottom() - d);
+    shadowSide.addTriangle (r.getX(), r.getY(), r.getX() + d, r.getBottom() - d, r.getX(), r.getBottom());
+    lightSide.addQuadrilateral (r.getRight(), r.getY(), r.getRight(), r.getBottom(), r.getX() + d, r.getBottom() - d, r.getRight() - d, r.getY() + d);
+    lightSide.addTriangle (r.getRight(), r.getBottom(), r.getX(), r.getBottom(), r.getX() + d, r.getBottom() - d);
+
+    auto strokeEdge = [&] (const juce::Path& side, juce::Colour colour)
+    {
+        juce::Graphics::ScopedSaveState save (g);
+        g.reduceClipRegion (side);
+        g.setColour (colour);
+        g.drawRoundedRectangle (r.reduced (0.5f), corner, 1.0f);
+    };
+    strokeEdge (shadowSide, juce::Colours::black.withAlpha (0.4f));
+    strokeEdge (lightSide, juce::Colours::white.withAlpha (0.85f));
+
+    // Fasteners holding the plate to the chassis.
+    const auto screws = r.reduced (7.0f);
+    for (auto p : { screws.getTopLeft(), screws.getTopRight(), screws.getBottomLeft(), screws.getBottomRight() })
+        drawScrew (g, p, 3.4f);
 
     auto content = area.reduced (12, 9);
     if (title.isNotEmpty())
@@ -229,43 +250,141 @@ void drawScrew (juce::Graphics& g, juce::Point<float> centre, float radius)
     g.drawLine (centre.x, centre.y - s, centre.x, centre.y + s, radius * 0.3f);
 }
 
-juce::Rectangle<float> keyFace (juce::Rectangle<float> bounds, bool pressed)
+namespace
 {
-    const float travel = juce::jlimit (1.5f, 3.5f, bounds.getHeight() * 0.11f);
-    auto face = bounds.withTrimmedBottom (travel);
-    return pressed ? face.translated (0.0f, travel * 0.6f) : face;
+// Keycap geometry, shared by drawing and by text placement on the face.
+struct KeyGeometry
+{
+    juce::Rectangle<float> well, body, face;
+    float corner, skirt;
+};
+
+KeyGeometry keyGeometry (juce::Rectangle<float> bounds, KeyState state)
+{
+    KeyGeometry k;
+    k.well = bounds.withTrimmedBottom (1.0f); // 1 px left for the lip below the well
+    k.body = k.well.reduced (1.5f);
+    k.corner = juce::jlimit (1.5f, 4.0f, juce::jmin (k.body.getWidth(), k.body.getHeight()) * 0.14f);
+    k.skirt = k.body.getHeight() >= 24.0f ? 4.0f : 3.0f;
+    const float travel = state == KeyState::down ? 3.0f : (state == KeyState::latched ? 1.5f : 0.0f);
+    k.face = k.body.withTrimmedBottom (k.skirt).translated (0.0f, travel);
+    return k;
+}
+} // namespace
+
+juce::Rectangle<float> keyFace (juce::Rectangle<float> bounds, KeyState state)
+{
+    return keyGeometry (bounds, state).face;
 }
 
-juce::Rectangle<float> drawKey (juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour face, bool pressed, bool hover)
+juce::Rectangle<float> drawKey (juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour face, KeyState state, bool hover)
 {
-    const float corner = juce::jlimit (2.0f, 5.0f, juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.16f);
+    const auto k = keyGeometry (bounds, state);
     const bool light = isLight (face);
 
-    // Contact shadow on the body plastic.
-    g.setColour (juce::Colours::black.withAlpha (pressed ? 0.08f : 0.13f));
-    g.fillRoundedRectangle (bounds.translated (0.0f, 1.5f).expanded (0.5f, 0.0f), corner + 1.0f);
-    g.setColour (juce::Colours::black.withAlpha (pressed ? 0.1f : 0.16f));
-    g.fillRoundedRectangle (bounds.translated (0.0f, 0.7f), corner);
+    // Drop well: the opening in the chassis, its lower lip catching the light.
+    g.setColour (juce::Colours::white.withAlpha (0.45f));
+    g.fillRoundedRectangle (k.well.translated (0.0f, 1.0f), k.corner + 1.5f);
+    g.setColour (juce::Colour (0xff161514));
+    g.fillRoundedRectangle (k.well, k.corner + 1.5f);
 
-    // Side wall, visible below the top face.
-    g.setColour (face.darker (light ? 0.32f : 0.55f));
-    g.fillRoundedRectangle (bounds, corner);
+    // Lower skirt: the front wall of the cap, darkening towards its base.
+    // Dark caps keep a skirt a little lighter than the well so it still reads.
+    const auto skirt = light ? face.darker (0.8f) : face.darker (0.1f);
+    g.setGradientFill (juce::ColourGradient (skirt, 0.0f, k.body.getBottom() - k.skirt,
+                                             skirt.darker (0.5f), 0.0f, k.body.getBottom(), false));
+    g.fillRoundedRectangle (k.body, k.corner);
 
-    // Top face: soft vertical falloff, brighter under the cursor.
-    const auto top = keyFace (bounds, pressed);
-    const auto f = hover ? face.brighter (light ? 0.04f : 0.12f) : face;
-    g.setGradientFill (juce::ColourGradient (f.brighter (light ? 0.03f : 0.08f), top.getX(), top.getY(),
-                                             f.darker (light ? 0.05f : 0.08f), top.getX(), top.getBottom(), false));
-    g.fillRoundedRectangle (top, corner);
+    // Top face: a subtle vertical falloff, a touch brighter under the cursor.
+    const auto f = hover ? face.brighter (light ? 0.03f : 0.1f) : face;
+    g.setGradientFill (juce::ColourGradient (f.brighter (light ? 0.04f : 0.1f), 0.0f, k.face.getY(),
+                                             f.darker (light ? 0.07f : 0.12f), 0.0f, k.face.getBottom(), false));
+    g.fillRoundedRectangle (k.face, k.corner);
 
-    // Edge highlight where the face meets the top bevel.
-    g.setColour (juce::Colours::white.withAlpha (light ? 0.7f : 0.16f));
-    g.fillRect (top.getX() + corner * 0.7f, top.getY() + 0.6f, top.getWidth() - corner * 1.4f, 1.0f);
+    // Where the face overhangs the skirt it throws a thin shadow line.
+    if (k.face.getBottom() < k.body.getBottom() - 0.5f)
+    {
+        g.setColour (juce::Colours::black.withAlpha (light ? 0.25f : 0.6f));
+        g.fillRect (k.face.getX() + k.corner * 0.5f, k.face.getBottom(), k.face.getWidth() - k.corner, 1.0f);
+    }
 
-    g.setColour (juce::Colours::black.withAlpha (light ? 0.22f : 0.45f));
-    g.drawRoundedRectangle (bounds.reduced (0.3f), corner, 0.8f);
-    return top;
+    // Highlight along the top inner chamfer.
+    g.setColour (juce::Colours::white.withAlpha (0.35f));
+    g.fillRect (k.face.getX() + k.corner * 0.6f, k.face.getY() + 1.0f, k.face.getWidth() - k.corner * 1.2f, 1.0f);
+    return k.face;
 }
+
+void drawFaderCap (juce::Graphics& g, juce::Rectangle<float> cap, bool vertical, bool enabled)
+{
+    const auto face = enabled ? colours::keyDark : colours::keyDark.interpolatedWith (colours::background, 0.45f);
+    constexpr float corner = 2.5f, skirt = 3.0f;
+
+    // Cast shadow on the chassis, falling below the cap.
+    g.setColour (juce::Colours::black.withAlpha (0.14f));
+    g.fillRoundedRectangle (cap.translated (0.0f, 4.0f).expanded (1.5f, 0.5f), corner + 1.5f);
+    g.setColour (juce::Colours::black.withAlpha (0.3f));
+    g.fillRoundedRectangle (cap.translated (0.0f, 1.5f), corner);
+
+    // Body: dark lower skirt with the top face above it.
+    g.setColour (face.darker (0.7f));
+    g.fillRoundedRectangle (cap, corner);
+    const auto top = cap.withTrimmedBottom (skirt);
+    g.setGradientFill (juce::ColourGradient (face.brighter (0.18f), 0.0f, top.getY(), face.darker (0.1f), 0.0f, top.getBottom(), false));
+    g.fillRoundedRectangle (top, corner);
+    g.setColour (juce::Colours::white.withAlpha (0.35f));
+    g.fillRect (top.getX() + corner, top.getY() + 1.0f, top.getWidth() - corner * 2.0f, 1.0f);
+
+    // Raised grip ridge across the middle: lit edge, white index line, shadowed edge.
+    const auto index = enabled ? colours::keyText : colours::keyText.withAlpha (0.4f);
+    if (vertical)
+    {
+        auto ridge = top.withSizeKeepingCentre (top.getWidth() - 4.0f, 3.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.22f));
+        g.fillRect (ridge.removeFromTop (1.0f));
+        g.setColour (index);
+        g.fillRect (ridge.removeFromTop (1.2f));
+        g.setColour (juce::Colours::black.withAlpha (0.55f));
+        g.fillRect (ridge);
+    }
+    else
+    {
+        auto ridge = top.withSizeKeepingCentre (3.0f, top.getHeight() - 4.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.22f));
+        g.fillRect (ridge.removeFromLeft (1.0f));
+        g.setColour (index);
+        g.fillRect (ridge.removeFromLeft (1.2f));
+        g.setColour (juce::Colours::black.withAlpha (0.55f));
+        g.fillRect (ridge);
+    }
+}
+
+namespace
+{
+// Black fader groove recessed into the chassis: shadowed top and left inner
+// walls, a lit lower lip outside.
+void drawGroove (juce::Graphics& g, juce::Rectangle<float> slot)
+{
+    const float corner = juce::jmin (slot.getWidth(), slot.getHeight()) * 0.5f;
+    g.setColour (juce::Colours::white.withAlpha (0.55f));
+    g.fillRoundedRectangle (slot.translated (0.0f, 1.0f), corner);
+    g.setColour (juce::Colour (0xff121110));
+    g.fillRoundedRectangle (slot, corner);
+
+    juce::Graphics::ScopedSaveState save (g);
+    juce::Path clip;
+    clip.addRoundedRectangle (slot, corner);
+    g.reduceClipRegion (clip);
+    g.setGradientFill (juce::ColourGradient (juce::Colours::black, 0.0f, slot.getY(),
+                                             juce::Colours::transparentBlack, 0.0f, slot.getY() + 6.0f, false));
+    g.fillRect (slot.withHeight (6.0f));
+    g.setColour (juce::Colours::black.withAlpha (0.6f));
+    g.fillRect (slot.withWidth (1.0f));
+    g.fillRect (slot.withHeight (1.0f));
+    g.setColour (juce::Colours::white.withAlpha (0.1f));
+    g.fillRect (slot.withTrimmedLeft (slot.getWidth() - 1.0f));
+    g.fillRect (slot.withTrimmedTop (slot.getHeight() - 1.0f));
+}
+} // namespace
 
 void setKeyStyle (juce::Component& c, KeyStyle style)
 {
@@ -319,62 +438,84 @@ void FloorplanLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, in
 {
     const auto bounds = juce::Rectangle<int> (x, y, w, h).toFloat().reduced (1.0f);
     const float radius = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f;
-    const auto centre = bounds.getCentre();
+    const auto centre = bounds.getCentre().translated (0.0f, -radius * 0.04f);
     const float angle = startAngle + pos * (endAngle - startAngle);
     const bool bipolar = (bool) slider.getProperties()["bipolar"];
     const bool enabled = slider.isEnabled();
-
-    // Printed scale: track, value arc and end ticks.
-    const float ring = radius * 0.9f, ringWidth = juce::jmax (1.5f, radius * 0.07f);
-    juce::Path track;
-    track.addCentredArc (centre.x, centre.y, ring, ring, 0.0f, startAngle, endAngle, true);
-    g.setColour (colours::border);
-    g.strokePath (track, juce::PathStrokeType (ringWidth, juce::PathStrokeType::curved, juce::PathStrokeType::butt));
-
-    const float from = bipolar ? (startAngle + endAngle) * 0.5f : startAngle;
-    juce::Path value;
-    value.addCentredArc (centre.x, centre.y, ring, ring, 0.0f, juce::jmin (from, angle), juce::jmax (from, angle), true);
-    g.setColour (enabled ? colours::accent : colours::textFaint);
-    g.strokePath (value, juce::PathStrokeType (ringWidth, juce::PathStrokeType::curved, juce::PathStrokeType::butt));
-
-    g.setColour (colours::textFaint);
-    for (auto a : { startAngle, endAngle })
-        g.drawLine (juce::Line<float> (centre.getPointOnCircumference (radius * 0.98f, a),
-                                       centre.getPointOnCircumference (radius * 1.08f, a)), 1.0f);
-
-    // Plastic cap: cast shadow, skirt, then the slightly domed top face.
-    const auto cap = capColour (slider, colours::keyLight);
-    const bool light = isLight (cap);
-    const float cr = radius * 0.7f;
     auto circle = [] (juce::Point<float> c, float r) { return juce::Rectangle<float> (r * 2.0f, r * 2.0f).withCentre (c); };
 
-    g.setColour (juce::Colours::black.withAlpha (0.1f));
-    g.fillEllipse (circle (centre.translated (0.0f, cr * 0.2f), cr * 1.1f));
-    g.setColour (juce::Colours::black.withAlpha (0.18f));
-    g.fillEllipse (circle (centre.translated (0.0f, cr * 0.1f), cr * 1.02f));
+    // Printed dial scale on the chassis; the centre tick is longer on bipolar controls.
+    constexpr int ticks = 11;
+    for (int i = 0; i < ticks; ++i)
+    {
+        const float a = startAngle + (endAngle - startAngle) * (float) i / (float) (ticks - 1);
+        const bool major = i == 0 || i == ticks - 1 || (bipolar && i == ticks / 2);
+        g.setColour (major ? colours::textDim : colours::textFaint);
+        g.drawLine (juce::Line<float> (centre.getPointOnCircumference (radius * (major ? 0.86f : 0.9f), a),
+                                       centre.getPointOnCircumference (radius, a)), major ? 1.4f : 1.0f);
+    }
 
-    g.setColour (cap.darker (light ? 0.3f : 0.5f));
+    // Solid cylinder: drop shadow, side wall, ribbed skirt, raised centre cap.
+    const auto cap = capColour (slider, colours::keyLight);
+    const bool light = isLight (cap);
+    const float sr = radius * 0.76f;                     // skirt radius
+    const float wall = juce::jmax (2.0f, sr * 0.14f);    // visible height of the cylinder wall
+    const auto skirtCol = cap.darker (light ? 0.22f : 0.15f);
+
+    g.setColour (juce::Colours::black.withAlpha (0.14f));
+    g.fillEllipse (circle (centre.translated (0.0f, wall + sr * 0.12f), sr * 1.06f));
+    g.setColour (juce::Colours::black.withAlpha (0.25f));
+    g.fillEllipse (circle (centre.translated (0.0f, wall + 1.0f), sr * 1.0f));
+
+    // Cylinder wall, seen below the top surface.
+    juce::Path side;
+    side.addEllipse (circle (centre.translated (0.0f, wall), sr));
+    side.addRectangle (centre.x - sr, centre.y, sr * 2.0f, wall);
+    g.setColour (skirtCol.darker (light ? 0.7f : 0.6f));
+    g.fillPath (side);
+
+    // Skirt top with knurled ribs; the ribs turn with the knob.
+    g.setGradientFill (juce::ColourGradient (skirtCol.brighter (0.06f), centre.x, centre.y - sr,
+                                             skirtCol.darker (0.08f), centre.x, centre.y + sr, false));
+    g.fillEllipse (circle (centre, sr));
+    const int ribs = juce::jlimit (16, 32, (int) (sr * 1.4f));
+    for (int i = 0; i < ribs; ++i)
+    {
+        const float a = angle + juce::MathConstants<float>::twoPi * (float) i / (float) ribs;
+        const auto outer = centre.getPointOnCircumference (sr - 0.6f, a);
+        const auto inner = centre.getPointOnCircumference (sr * 0.8f, a);
+        const auto lit = centre.getPointOnCircumference (sr - 0.6f, a + 0.06f);
+        g.setColour (juce::Colours::black.withAlpha (light ? 0.22f : 0.45f));
+        g.drawLine (juce::Line<float> (inner, outer), 1.0f);
+        g.setColour (juce::Colours::white.withAlpha (light ? 0.35f : 0.1f));
+        g.drawLine (juce::Line<float> (centre.getPointOnCircumference (sr * 0.8f, a + 0.06f), lit), 0.7f);
+    }
+
+    // Raised centre cap: its own contact shadow, then a softly lit top.
+    const float cr = sr * 0.7f;
+    g.setColour (juce::Colours::black.withAlpha (light ? 0.25f : 0.4f));
+    g.fillEllipse (circle (centre.translated (0.0f, 1.2f), cr + 0.5f));
+    g.setGradientFill (juce::ColourGradient (cap.brighter (light ? 0.05f : 0.2f), centre.x - cr * 0.5f, centre.y - cr * 0.7f,
+                                             cap.darker (light ? 0.06f : 0.1f), centre.x + cr * 0.5f, centre.y + cr * 0.8f, false));
     g.fillEllipse (circle (centre, cr));
+    {
+        // Rim: highlight on the upper half, shading on the lower half.
+        juce::Path upper, lower;
+        upper.addCentredArc (centre.x, centre.y, cr - 0.5f, cr - 0.5f, 0.0f, -2.2f, 0.9f, true);
+        lower.addCentredArc (centre.x, centre.y, cr - 0.5f, cr - 0.5f, 0.0f, 1.4f, 4.4f, true);
+        g.setColour (juce::Colours::white.withAlpha (0.35f));
+        g.strokePath (upper, juce::PathStrokeType (1.0f));
+        g.setColour (juce::Colours::black.withAlpha (light ? 0.12f : 0.3f));
+        g.strokePath (lower, juce::PathStrokeType (1.0f));
+    }
 
-    const auto topCentre = centre.translated (0.0f, -cr * 0.07f);
-    const float topR = cr * 0.84f;
-    juce::ColourGradient dome (cap.brighter (light ? 0.05f : 0.18f), topCentre.x - topR * 0.4f, topCentre.y - topR * 0.5f,
-                               cap.darker (light ? 0.06f : 0.1f), topCentre.x + topR * 0.6f, topCentre.y + topR * 0.8f, true);
-    g.setGradientFill (dome);
-    g.fillEllipse (circle (topCentre, topR));
-    g.setColour (juce::Colours::white.withAlpha (light ? 0.6f : 0.15f));
-    g.drawEllipse (circle (topCentre, topR - 0.5f), 0.8f);
-    g.setColour (juce::Colours::black.withAlpha (light ? 0.25f : 0.5f));
-    g.drawEllipse (circle (centre, cr), 0.8f);
-
-    // Pointer line moulded into the top face.
-    const auto tip = topCentre.getPointOnCircumference (topR * 0.82f, angle);
-    const auto inner = topCentre.getPointOnCircumference (topR * 0.32f, angle);
-    g.setColour ((light ? colours::ink : colours::keyText).withMultipliedAlpha (enabled ? 1.0f : 0.4f));
-    juce::Path pointer;
-    pointer.startNewSubPath (inner);
-    pointer.lineTo (tip);
-    g.strokePath (pointer, juce::PathStrokeType (juce::jmax (1.6f, radius * 0.075f), juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    // Indicator notch: a high-contrast line cut from the cap centre out across the skirt.
+    const auto notchColour = light ? colours::ink : colours::keyText;
+    juce::Path notch;
+    notch.startNewSubPath (centre.getPointOnCircumference (cr * 0.25f, angle));
+    notch.lineTo (centre.getPointOnCircumference (sr - 1.0f, angle));
+    g.setColour (notchColour.withMultipliedAlpha (enabled ? 1.0f : 0.4f));
+    g.strokePath (notch, juce::PathStrokeType (juce::jmax (2.0f, radius * 0.09f), juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 }
 
 void FloorplanLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int w, int h, float pos, float, float,
@@ -415,36 +556,32 @@ void FloorplanLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, in
 
     if (style == juce::Slider::LinearVertical)
     {
-        // Recessed slot with printed ticks and a plastic fader cap.
-        const auto slot = juce::Rectangle<float> (6.0f, r.getHeight() - 8.0f).withCentre (r.getCentre());
-        g.setColour (juce::Colours::white.withAlpha (0.5f));
-        g.fillRoundedRectangle (slot.translated (0.0f, 1.0f), 3.0f);
-        g.setColour (juce::Colour (0xff2a2826));
-        g.fillRoundedRectangle (slot, 3.0f);
+        // Recessed groove with printed ticks either side, and a chunky cap
+        // that overhangs the groove.
+        const auto slot = juce::Rectangle<float> (7.0f, r.getHeight() - 12.0f).withCentre (r.getCentre());
+        drawGroove (g, slot);
 
-        g.setColour (colours::textFaint.withAlpha (0.8f));
+        g.setColour (colours::textFaint);
         for (int i = 0; i <= 8; ++i)
         {
             const float ty = slot.getY() + slot.getHeight() * (float) i / 8.0f;
-            const float len = i % 4 == 0 ? 5.0f : 3.0f;
+            const float len = i % 4 == 0 ? 4.0f : 2.5f;
             g.fillRect (slot.getX() - 3.0f - len, ty - 0.5f, len, 1.0f);
+            g.fillRect (slot.getRight() + 3.0f, ty - 0.5f, len, 1.0f);
         }
 
-        const auto capBounds = juce::Rectangle<float> (juce::jmin (r.getWidth() - 2.0f, 22.0f), 13.0f)
+        const auto capBounds = juce::Rectangle<float> (juce::jmin (r.getWidth() - 2.0f, 28.0f), 17.0f)
                                    .withCentre ({ r.getCentreX(), juce::jlimit (slot.getY(), slot.getBottom(), pos) });
-        const auto face = drawKey (g, capBounds, enabled ? colours::keyLight : colours::panel, false);
-        g.setColour (colours::ink);
-        g.fillRect (face.withSizeKeepingCentre (face.getWidth() - 6.0f, 1.2f));
+        drawFaderCap (g, capBounds, true, enabled);
         return;
     }
 
-    // Horizontal: slot and a small cap.
-    const auto slot = juce::Rectangle<float> (r.getWidth() - 8.0f, 5.0f).withCentre (r.getCentre());
-    g.setColour (juce::Colour (0xff2a2826));
-    g.fillRoundedRectangle (slot, 2.5f);
+    // Horizontal: groove with an orange value fill and an overhanging cap.
+    const auto slot = juce::Rectangle<float> (r.getWidth() - 10.0f, 6.0f).withCentre (r.getCentre());
+    drawGroove (g, slot);
     g.setColour (colours::accent);
-    g.fillRoundedRectangle (slot.withRight (juce::jmax (slot.getX(), pos)).reduced (0.0f, 1.5f), 1.0f);
-    drawKey (g, juce::Rectangle<float> (10.0f, 16.0f).withCentre ({ pos, r.getCentreY() }), colours::keyLight, false);
+    g.fillRoundedRectangle (slot.withRight (juce::jmax (slot.getX(), pos)).reduced (1.0f, 2.0f), 1.0f);
+    drawFaderCap (g, juce::Rectangle<float> (12.0f, juce::jmin (r.getHeight(), 20.0f)).withCentre ({ pos, r.getCentreY() }), false, enabled);
 }
 
 juce::Colour FloorplanLookAndFeel::faceColour (juce::Button& b)
@@ -463,15 +600,20 @@ juce::Colour FloorplanLookAndFeel::faceColour (juce::Button& b)
     return b.isEnabled() ? face : face.interpolatedWith (colours::background, 0.45f);
 }
 
+KeyState FloorplanLookAndFeel::keyState (juce::Button& b, bool down)
+{
+    // Latched toggles sit part way down, like a key held in.
+    return down ? KeyState::down : (b.getToggleState() ? KeyState::latched : KeyState::up);
+}
+
 void FloorplanLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour&, bool over, bool down)
 {
-    // Latched toggles sit lower, like a key held in.
-    drawKey (g, b.getLocalBounds().toFloat().reduced (0.5f, 0.0f), faceColour (b), down || b.getToggleState(), over && b.isEnabled());
+    drawKey (g, b.getLocalBounds().toFloat(), faceColour (b), keyState (b, down), over && b.isEnabled());
 }
 
 void FloorplanLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b, bool, bool down)
 {
-    const auto face = keyFace (b.getLocalBounds().toFloat().reduced (0.5f, 0.0f), down || b.getToggleState());
+    const auto face = keyFace (b.getLocalBounds().toFloat(), keyState (b, down));
     const auto faceCol = faceColour (b);
     const auto id = b.getToggleState() ? juce::TextButton::textColourOnId : juce::TextButton::textColourOffId;
     auto colour = b.isColourSpecified (id) ? b.findColour (id) : (isLight (faceCol) ? colours::ink : colours::keyText);

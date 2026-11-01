@@ -12,6 +12,9 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The header display shows pattern.step and BPM as 7-segment digits, with transport and clock-source indicators.
 - Step LEDs above the grid show the playhead, and voice LEDs flash on each hit.
 - Each voice's six sound controls are segment bar graphs in small display windows, with the value printed below. Mixer meters are LED columns.
+- Keys are extruded caps in dark drop wells, with a lower skirt and a chamfer highlight. Step keys travel down while the mouse is held on them.
+- Faders sit in recessed black grooves with chunky ridged caps that cast a shadow. Knobs are ribbed plastic cylinders with a raised centre cap and an indicator notch.
+- The display, sequencer, sound, groove and mixer sections are separate screwed-down plates with sunken groove edges.
 
 ### Fixed
 

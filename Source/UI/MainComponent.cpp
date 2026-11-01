@@ -37,14 +37,11 @@ void MainComponent::paint (juce::Graphics& g)
     g.fillAll (colours::background);
     drawPlasticTexture (g, getLocalBounds());
 
-    // Plate behind voices + sequencer, held by four screws.
+    // Sequencer module: one plate for the voice list and the step grid.
     const auto top = instruments.getBounds().getUnion (sequencer.getBounds()).expanded (12, 9);
     drawPanel (g, top, {});
     g.setColour (colours::borderLight.withAlpha (0.5f));
     g.fillRect (instruments.getRight() + 9, top.getY() + 14, 1, top.getHeight() - 28);
-    const auto plate = top.toFloat().reduced (7.0f);
-    for (auto corner : { plate.getTopLeft(), plate.getTopRight(), plate.getBottomLeft(), plate.getBottomRight() })
-        drawScrew (g, corner, 3.2f);
 }
 
 void MainComponent::resized()

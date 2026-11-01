@@ -167,21 +167,25 @@ public:
     void paintCell (juce::Graphics& g, int v, int s, const Pattern& pat)
     {
         const auto& geom = owner.geo;
-        const auto bounds = cell (v, s).reduced (2.5f, 2.0f);
+        const auto bounds = cell (v, s).reduced (1.5f, 1.0f);
         if (! geom.inPattern (s))
         {
-            g.setColour (juce::Colours::black.withAlpha (0.06f));
-            g.fillRoundedRectangle (bounds, 3.0f);
+            // Beyond the pattern length: an empty well with no key in it.
+            g.setColour (juce::Colours::black.withAlpha (0.08f));
+            g.fillRoundedRectangle (bounds.reduced (1.5f), 3.0f);
             return;
         }
 
         // Each step is a key: dark when off, latched light when on, orange
         // when accented. Alternate beat groups use a slightly lighter dark key.
+        // The key under the mouse travels fully down while the button is held.
         const auto& st = pat.tracks[(size_t) v].steps[(size_t) s];
         const bool beatGroup = (s / 4) % 2 == 0;
         const auto face = st.on ? (st.accent() ? colours::accent : colours::keyLight)
                                 : (beatGroup ? colours::keyDark : colours::keyDark.brighter (0.12f));
-        const auto r = drawKey (g, bounds, face, st.on);
+        const auto keyState = v == pressedVoice && s == pressedStep ? KeyState::down
+                                                                   : (st.on ? KeyState::latched : KeyState::up);
+        const auto r = drawKey (g, bounds, face, keyState);
 
         if (st.on)
         {
@@ -258,6 +262,7 @@ public:
             return;
         }
 
+        setPressed (v, s);
         owner.proc.patterns.pushUndoSnapshot (owner.cachedIndex);
         const auto& st = owner.cached.tracks[(size_t) v].steps[(size_t) s];
 
@@ -291,11 +296,16 @@ public:
         if (owner.geo.inPattern (s) && s != lastPainted)
         {
             lastPainted = s;
+            setPressed (paintVoice, s);
             setStep (paintVoice, s, paintValue);
         }
     }
 
-    void mouseUp (const juce::MouseEvent&) override { painting = false; }
+    void mouseUp (const juce::MouseEvent&) override
+    {
+        painting = false;
+        setPressed (-1, -1);
+    }
 
     void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
     {
@@ -312,6 +322,19 @@ public:
     }
 
 private:
+    void setPressed (int v, int s)
+    {
+        auto repaintCell = [this] (int voice, int step)
+        {
+            if (voice >= 0)
+                repaint (cell (voice, step).getSmallestIntegerContainer().expanded (2));
+        };
+        repaintCell (pressedVoice, pressedStep);
+        pressedVoice = v;
+        pressedStep = s;
+        repaintCell (v, s);
+    }
+
     void setStep (int v, int s, bool on)
     {
         owner.editPattern ([v, s, on] (Pattern& p) { p.tracks[(size_t) v].steps[(size_t) s].on = on ? 1 : 0; }, false);
@@ -371,6 +394,7 @@ private:
     SequencerComponent& owner;
     bool painting = false, paintValue = true;
     int paintVoice = 0, lastPainted = -1;
+    int pressedVoice = -1, pressedStep = -1;
 };
 
 // ===========================================================================
