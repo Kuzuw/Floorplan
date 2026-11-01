@@ -1,0 +1,174 @@
+name: Release
+
+# Pushing a tag vX.Y.Z builds the Windows and macOS installers, installs each
+# one on the runner to check it, and creates a draft GitHub release with them.
+# Changes to the packaging on main, and manual runs, are dry runs: the
+# installers are built, checked and uploaded as workflow artifacts, but no
+# release is created.
+on:
+  push:
+    tags: ["v*"]
+    branches: [main]
+    paths: ["packaging/**", ".github/workflows/release.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: read
+        name: Read the project version
+        run: |
+          version=$(sed -n 's/^project(Floorplan VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          if [ -z "$version" ]; then echo "::error::No version found in CMakeLists.txt"; exit 1; fi
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match the project version $version in CMakeLists.txt"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  windows:
+    name: Windows installer
+    needs: version
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Build installer
+        run: |
+          choco install innosetup --no-progress -y
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Qp "/DAppVersion=$env:VERSION" `
+            "/DBuildDir=$pwd\build\Floorplan_artefacts\Release" "/DOutputDir=$pwd\dist" packaging\windows\Floorplan.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Check installer (install, verify, uninstall)
+        run: |
+          $setup = "dist\Floorplan-$env:VERSION-Windows-x64-Setup.exe"
+          $vst3 = "$env:CommonProgramFiles\VST3\Floorplan.vst3\Contents\x86_64-win\Floorplan.vst3"
+          $app = "$env:ProgramFiles\Floorplan\Floorplan.exe"
+
+          $p = Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/LOG=install.log' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content install.log -Tail 30; throw "Setup exited with $($p.ExitCode)" }
+          foreach ($f in $vst3, $app) { if (-not (Test-Path $f)) { throw "Not installed: $f" } }
+
+          $p = Start-Process "$env:ProgramFiles\Floorplan\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Uninstall exited with $($p.ExitCode)" }
+          # The uninstaller finishes removing its own folder in the background.
+          Start-Sleep -Seconds 3
+          foreach ($f in $vst3, $app) { if (Test-Path $f) { throw "Not removed by uninstall: $f" } }
+          "Install and uninstall OK"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: installer-windows
+          path: dist/*.exe
+          if-no-files-found: error
+
+  macos:
+    name: macOS installer
+    needs: version
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+          cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Build installer
+        run: bash packaging/macos/build-pkg.sh "$VERSION" build/Floorplan_artefacts/Release dist
+
+      - name: Check installer (install and verify)
+        run: |
+          # Move the build output away so Installer cannot relocate onto it.
+          mv build/Floorplan_artefacts build/Floorplan_artefacts.moved
+          sudo installer -pkg "dist/Floorplan-$VERSION-macOS.pkg" -target /
+          vst3=/Library/Audio/Plug-Ins/VST3/Floorplan.vst3
+          app=/Applications/Floorplan.app
+          for bundle in "$vst3" "$app"; do
+            test -d "$bundle" || { echo "::error::Not installed: $bundle"; exit 1; }
+            codesign --verify --deep --strict "$bundle"
+            lipo -archs "$bundle"/Contents/MacOS/*
+          done
+          lipo -archs "$vst3"/Contents/MacOS/* | grep -q arm64
+          lipo -archs "$vst3"/Contents/MacOS/* | grep -q x86_64
+          echo "Install OK"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: installer-macos
+          path: dist/*.pkg
+          if-no-files-found: error
+
+  release:
+    name: Draft release
+    if: github.ref_type == 'tag'
+    needs: [version, windows, macos]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: installer-*
+          path: dist
+          merge-multiple: true
+
+      - name: Write release notes
+        run: |
+          cd dist && sha256sum * > SHA256SUMS.txt && cd ..
+          {
+            echo "## Download"
+            echo
+            echo "| Platform | File |"
+            echo "| --- | --- |"
+            echo "| Windows 10/11 (64-bit) | \`Floorplan-$VERSION-Windows-x64-Setup.exe\` |"
+            echo "| macOS 11+ (Apple silicon and Intel) | \`Floorplan-$VERSION-macOS.pkg\` |"
+            echo
+            echo "The installers are not code-signed yet, so the first launch shows a warning:"
+            echo
+            echo "- **Windows:** SmartScreen says \"Windows protected your PC\". Click **More info**, then **Run anyway**."
+            echo "- **macOS:** the package is blocked as coming from an unidentified developer. Open **System Settings → Privacy & Security**, click **Open Anyway** next to the Floorplan message, then open the package again."
+            echo
+            echo "Linux users: build from source (see the README)."
+            echo
+            awk -v v="$VERSION" '$0 ~ "^## \\[" v "\\]" { found = 1; next } found && /^## \[/ { exit } found' CHANGELOG.md
+          } > notes.md
+          cat notes.md
+
+      - name: Create draft release
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* --draft \
+            --title "Floorplan $VERSION" --notes-file notes.md

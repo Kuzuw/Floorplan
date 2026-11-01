@@ -139,15 +139,33 @@ CMake options:
 
 ## Installing
 
-Copy `Floorplan.vst3` to your system VST3 folder and rescan plugins in your DAW:
+Download the installer for your system from the [Releases](https://github.com/Kuzuw/Floorplan/releases) page, run it, then rescan plugins in your DAW.
+
+| Platform | Installer | Installs to |
+| --- | --- | --- |
+| Windows 10/11 (64-bit) | `Floorplan-<version>-Windows-x64-Setup.exe` | VST3: `C:\Program Files\Common Files\VST3\`<br>App: `C:\Program Files\Floorplan\` |
+| macOS 11+ (Apple silicon and Intel) | `Floorplan-<version>-macOS.pkg` | VST3: `/Library/Audio/Plug-Ins/VST3/`<br>App: `/Applications/` |
+
+Both installers let you choose the VST3 plugin, the Standalone app, or both. On Windows, uninstall from *Settings → Apps*.
+
+The installers are not code-signed yet, so the first launch shows a warning:
+
+- **Windows:** SmartScreen says "Windows protected your PC". Click **More info**, then **Run anyway**.
+- **macOS:** the package is blocked as coming from an unidentified developer. Open **System Settings → Privacy & Security**, click **Open Anyway** next to the Floorplan message, then open the package again.
+
+### Manual installation
+
+To install a build of your own (or on Linux), copy `Floorplan.vst3` to your VST3 folder:
 
 | OS | Folder |
 | --- | --- |
 | Windows | `C:\Program Files\Common Files\VST3\` |
-| macOS | `~/Library/Audio/Plug-Ins/VST3/` |
+| macOS | `/Library/Audio/Plug-Ins/VST3/` or `~/Library/Audio/Plug-Ins/VST3/` |
 | Linux | `~/.vst3/` |
 
-The Standalone app needs no installation. Pick your audio/MIDI device under *Options → Audio/MIDI Settings*.
+The Standalone app runs from anywhere. Pick your audio/MIDI device under *Options → Audio/MIDI Settings*.
+
+To build the installers yourself after a Release build: on Windows, `iscc /DAppVersion=<version> packaging\windows\Floorplan.iss` ([Inno Setup 6](https://jrsoftware.org/isinfo.php)); on macOS, `packaging/macos/build-pkg.sh <version>`. Both write to `dist/`.
 
 ## Using Floorplan
 
@@ -208,6 +226,7 @@ Source/
 Tests/          Core tests (no JUCE) and plugin tests (processor, state, presets)
 Benchmarks/     floorplan_bench
 docs/           Architecture, pattern format, DAW test plan, roadmap, dev log
+packaging/      Windows installer (Inno Setup) and macOS installer package scripts
 ```
 
 How the pieces fit, the threading model and how to add a voice are in **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.

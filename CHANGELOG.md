@@ -6,20 +6,6 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Changed
-
-- New hardware design language: a light moulded-plastic body with printed labels, physical keys with travel (steps, patterns and functions), plastic knob caps, recessed fader slots, and smoked-glass LCD windows. Signal orange marks active states.
-- The header display shows pattern.step and BPM as 7-segment digits, with transport and clock-source indicators.
-- Step LEDs above the grid show the playhead, and voice LEDs flash on each hit.
-- Each voice's six sound controls are segment bar graphs in small display windows, with the value printed below. Mixer meters are LED columns.
-- Keys are extruded caps in dark drop wells, with a lower skirt and a chamfer highlight. Step keys travel down while the mouse is held on them.
-- Faders sit in recessed black grooves with chunky ridged caps that cast a shadow. Knobs are ribbed plastic cylinders with a raised centre cap and an indicator notch.
-- The display, sequencer, sound, groove and mixer sections are separate screwed-down plates with sunken groove edges.
-
-### Fixed
-
-- Linux build: the core library is now compiled as position-independent code, so it links into the VST3 shared object.
-
 ## [0.1.0] - 2026-11-01
 
 First public release.
@@ -27,6 +13,7 @@ First public release.
 ### Added
 
 - VST3 and Standalone builds for Windows, macOS and Linux (JUCE 8, CMake).
+- Installers: a Windows setup (x64) and a macOS package (Apple silicon and Intel), each with a choice of VST3 plugin and Standalone app. Neither is code-signed yet.
 - Eight synthesized voices: Kick, Snare, Closed Hat, Open Hat (choked by the closed hat), Clap, Percussion, Low Tom and Cymbal, each with six sound controls.
 - Optional WAV/AIFF/FLAC/Ogg sample playback per voice, loaded off the audio thread. Missing samples are reported and fall back to synthesis.
 - Per-voice channel strip: level, pan, mute, solo, bipolar filter, drive and output routing to eight extra stereo buses.
@@ -40,7 +27,8 @@ First public release.
 - Eight factory kits and nine factory patterns. User kits are saved to `Documents/Floorplan/Kits`.
 - Pattern and bank import/export as documented JSON.
 - Versioned plugin state, with migration from development-build states.
-- Resizable dark interface (60% to 200%) with keyboard pads, keyboard shortcuts and drag-and-drop for samples.
+- Hardware-style interface: a moulded-plastic body with separate screwed-down module plates, extruded keys with travel, ribbed knobs, grooved faders, and LCD windows with 7-segment pattern/step and BPM readouts. Step LEDs show the playhead and voice LEDs flash on each hit.
+- Resizable interface (60% to 200%) with keyboard pads, keyboard shortcuts and drag-and-drop for samples.
 - 43 automated tests and a performance benchmark.
 
 ### Known limitations
