@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/OWNER/floorplan/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/OWNER/floorplan/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/Kuzuw/Floorplan/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Kuzuw/Floorplan/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg"></a>
   <img alt="C++17" src="https://img.shields.io/badge/C%2B%2B-17-00599C.svg">
   <img alt="JUCE 8" src="https://img.shields.io/badge/JUCE-8.0.16-8DC63F.svg">
@@ -108,11 +108,11 @@ sudo apt install libasound2-dev libjack-jackd2-dev libfreetype-dev libfontconfig
 ### Build
 
 ```bash
-git clone --recurse-submodules https://github.com/OWNER/floorplan.git
+git clone --recurse-submodules https://github.com/Kuzuw/Floorplan.git
 ```
 
 ```bash
-cd floorplan
+cd Floorplan
 ```
 
 ```bash

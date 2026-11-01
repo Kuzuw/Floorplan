@@ -36,5 +36,5 @@ First public release.
 - Only tune and decay can be locked per step.
 - All tracks in a pattern share one length.
 
-[Unreleased]: https://github.com/OWNER/floorplan/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/OWNER/floorplan/releases/tag/v0.1.0
+[Unreleased]: https://github.com/Kuzuw/Floorplan/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Kuzuw/Floorplan/releases/tag/v0.1.0
